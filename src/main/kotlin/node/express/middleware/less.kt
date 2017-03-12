@@ -1,21 +1,20 @@
 package node.express.middleware
 
-import java.io.File
-import node.express.Response
 import node.express.RouteHandler
+import java.io.File
 
 /**
  * Compiles less files into CSS
  * @basePath the root path to look for less files relative to the request path
  */
-public fun lessCompiler(basePath: String): RouteHandler.()->Unit {
+fun lessCompiler(basePath: String): RouteHandler.()->Boolean {
     fun normalizePath(path: String): String {
         var newPath = path
         if (newPath.startsWith("/")) {
             newPath = newPath.substring(1)
         }
         if (newPath.endsWith("/")) {
-            newPath = newPath.substring(0, newPath.length() - 1)
+            newPath = newPath.substring(0, newPath.length - 1)
         }
         return newPath
     }
@@ -31,7 +30,7 @@ public fun lessCompiler(basePath: String): RouteHandler.()->Unit {
                 path = "/" + path
             }
 
-            var srcFile = File(base + path)
+            val srcFile = File(base + path)
 
             if (!srcFile.exists()) {
                 res.send(404)
@@ -45,7 +44,7 @@ public fun lessCompiler(basePath: String): RouteHandler.()->Unit {
                 }
                 if (cssFile == null) {
                     cssFile = File.createTempFile("LessCss", ".css")
-                    var lessCompiler = org.lesscss.LessCompiler()
+                    val lessCompiler = org.lesscss.LessCompiler()
                     lessCompiler.compile(srcFile, cssFile)
                     cache.put(path, cssFile!!)
                 }
@@ -54,8 +53,7 @@ public fun lessCompiler(basePath: String): RouteHandler.()->Unit {
         if (cssFile != null) {
             res.contentType("text/css")
             res.sendFile(cssFile)
-        } else {
-            next()
-        }
+            true
+        } else false
     }
 }

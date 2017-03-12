@@ -7,7 +7,7 @@ interface Body: Map<String, Any?> {
   /**
    * Get the value of an attribute as its native type
    */
-  fun get(key: String): Any?
+  override fun get(key: String): Any?
 
   /**
    * Get the value of an attribute as an integer

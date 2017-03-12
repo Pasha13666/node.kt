@@ -1,63 +1,22 @@
 package node.express
 
-import io.netty.bootstrap.ServerBootstrap
-import java.util.HashMap
-import io.netty.channel.ChannelHandlerContext
-import io.netty.handler.codec.http.HttpRequest
-import io.netty.channel.ChannelPipeline
-import io.netty.handler.codec.http.HttpRequestDecoder
-import io.netty.handler.codec.http.HttpResponseEncoder
-import io.netty.handler.stream.ChunkedWriteHandler
-import java.util.concurrent.Executors
-import java.util.ArrayList
-import java.net.InetSocketAddress
-import java.util.Date
-import java.text.SimpleDateFormat
-import java.util.TimeZone
-import java.util.regex.Pattern
-import java.util.regex.Matcher
+import node.NotFoundException
 import node.express.engines.FreemarkerEngine
 import node.express.engines.VelocityEngine
 import node.util.extension
-import java.io.File
 import node.util.log
-import java.util.logging.Level
-import com.fasterxml.jackson.databind.ObjectMapper
-import node.http.HttpMethod
-import java.lang.annotation.RetentionPolicy
-import java.lang.annotation.Retention
-import node.NotFoundException
-import io.netty.handler.codec.http.websocketx.WebSocketServerHandshakerFactory
-import io.netty.handler.codec.http.QueryStringDecoder
-import io.netty.handler.codec.http.websocketx.WebSocketFrame
-import io.netty.channel.group.DefaultChannelGroup
-import io.netty.channel.Channel
-import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame
-import io.netty.handler.codec.http.websocketx.PingWebSocketFrame
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame
-import io.netty.handler.codec.http.websocketx.PongWebSocketFrame
-import io.netty.channel.ChannelFutureListener
-import io.netty.channel.ChannelFuture
-import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame
-import io.netty.buffer.ByteBuf
-import java.nio.ByteBuffer
+import java.io.File
 import java.io.FileNotFoundException
-import io.netty.channel.ChannelOutboundHandlerAdapter
-import io.netty.channel.ChannelInboundHandlerAdapter
-import io.netty.channel.nio.NioEventLoopGroup
-import io.netty.channel.socket.nio.NioServerSocketChannel
-import io.netty.handler.codec.http.HttpObjectAggregator
-import io.netty.handler.codec.http.FullHttpRequest
-import io.netty.channel.SimpleChannelInboundHandler
+import java.util.*
+import java.util.logging.Level
 
-private val json = ObjectMapper();
 
 // The default error handler. Can be overridden by setting the errorHandler property of the
 // Express instance
 var defaultErrorHandler :((Throwable, Request, Response) -> Unit) = { t, req, res ->
   log(Level.WARNING, "Error thrown handling request: " + req.path, t)
   when (t) {
-    is ExpressException -> res.send(t.code, t.getMessage())
+    is ExpressException -> res.send(t.code, t.message)
     is NotFoundException -> res.notFound()
     is FileNotFoundException -> res.notFound()
     is IllegalArgumentException -> res.badRequest()
@@ -68,22 +27,14 @@ var defaultErrorHandler :((Throwable, Request, Response) -> Unit) = { t, req, re
   }
 }
 
-class RouteHandler(val req: Request, val res: Response, val nextHandler: (nextReq: Request, nextRes: Response) -> Unit) {
-  fun next() {
-    nextHandler(req, res)
-  }
-
-  fun next(nextReq: Request, nextRes: Response) {
-    nextHandler(nextReq, nextRes)
-  }
-}
+class RouteHandler(val req: Request, val res: Response)
 
 /**
  * Express.kt
  */
-abstract class Express() {
+abstract class Express {
   private val settings = HashMap<String, Any>()
-  public val locals:MutableMap<String, Any> = HashMap<String, Any>()
+  val locals:MutableMap<String, Any> = HashMap()
   private val routes = ArrayList<Route>()
   private val engines = HashMap<String, Engine>()
 
@@ -105,14 +56,14 @@ abstract class Express() {
    * Assign a setting value. Settings are available in templates as 'settings'
    */
   fun set(name: String, value: Any) {
-    settings.put(name, value);
+    settings.put(name, value)
   }
 
   /**
    * Get the value of a setting
    */
   fun get(name: String): Any? {
-    return settings.get(name);
+    return settings[name]
   }
 
   /**
@@ -124,7 +75,7 @@ abstract class Express() {
    * @param engine a rendering engine that implements the Engine trait
    */
   fun engine(ext: String, engine: Engine) {
-    engines.put(ext, engine);
+    engines.put(ext, engine)
   }
 
   /**
@@ -145,7 +96,7 @@ abstract class Express() {
    * Check if a setting is enabled. If the setting doesn't exist, returns false.
    */
   fun enabled(feature: String): Boolean {
-    return settings.get(feature) as? Boolean ?: false
+    return settings[feature] as? Boolean ?: false
   }
 
   /**
@@ -157,6 +108,8 @@ abstract class Express() {
     params.put(name, builder)
   }
 
+    fun render(name: String, vararg ent: Pair<String, Any?>) = render(name, mapOf(*ent))
+
   /**
    * Render a view, returning the resulting string.
    * @param name the name of the view. If the extension is left off, the value of 'view engine' will
@@ -166,130 +119,113 @@ abstract class Express() {
    * all rendering operations.
    */
   fun render(name: String, data: Map<String, Any?>? = null): String {
-    var ext = name.extension();
-    var viewFileName = name;
+    var ext = name.extension()
+    var viewFileName = name
     if (ext == null) {
-      ext = settings.get("view engine") as? String ?: throw IllegalArgumentException("No default view set for view without extension")
-      viewFileName = name + "." + ext;
+      ext = settings["view engine"] as? String ?: throw IllegalArgumentException("No default view set for view without extension")
+      viewFileName = name + "." + ext
     }
 
-    val renderer = engines.get(ext) ?: throw IllegalArgumentException("No renderer for ext: " + ext);
+    val renderer = engines[ext] ?: throw IllegalArgumentException("No renderer for ext: " + ext)
 
-    var mergedContext = HashMap<String, Any?>();
-    mergedContext.putAll(locals);
-    if (data != null) {
-      mergedContext.putAll(data);
-    }
+    val mergedContext = HashMap<String, Any?>()
+    mergedContext.putAll(locals)
+    if (data != null)
+      mergedContext.putAll(data)
 
-    val viewsPath = settings.get("views") as String;
+    val viewsPath = settings["views"] as String
 
     val viewFile = File(viewsPath + viewFileName)
-    if (!viewFile.exists()) {
+    if (!viewFile.exists())
       throw FileNotFoundException()
-    }
-    val viewPath = viewFile.getAbsolutePath();
+    val viewPath = viewFile.absolutePath
 
-    return renderer.render(viewPath, mergedContext);
+    return renderer.render(viewPath, mergedContext)
   }
 
-  fun install(method: String, path: String, vararg handler: RouteHandler.() -> Unit) {
+  fun install(method: String, path: String, vararg handler: RouteHandler.() -> Boolean) {
     handler.forEach {
       routes.add(Route(method, path, it))
     }
   }
 
-  private fun installAll(path: String, vararg handler: RouteHandler.() -> Unit) {
-    install("get", path, *handler);
-    install("put", path, *handler);
-    install("post", path, *handler);
-    install("delete", path, *handler);
-    install("head", path, *handler);
-    install("patch", path, *handler);
+  private fun installAll(path: String, vararg handler: RouteHandler.() -> Boolean) {
+    install("get", path, *handler)
+    install("put", path, *handler)
+    install("post", path, *handler)
+    install("delete", path, *handler)
+    install("head", path, *handler)
+    install("patch", path, *handler)
   }
 
   /**
    * Install a middleware Handler object to be used for all requests.
    */
-  fun use(middleware: RouteHandler.() -> Unit) {
+  fun use(middleware: RouteHandler.() -> Boolean) {
     install("*", "*", middleware)
   }
 
   /**
    * Install middleware for a given path expression
    */
-  fun use(path: String, vararg middleware: RouteHandler.() -> Unit) {
+  fun use(path: String, vararg middleware: RouteHandler.() -> Boolean) {
     install("*", path, *middleware)
   }
 
   /**
    * Install a handler for a path for all HTTP methods.
    */
-  fun all(path: String, vararg middleware: RouteHandler.() -> Unit) {
+  fun all(path: String, vararg middleware: RouteHandler.() -> Boolean) {
     install("*", path, *middleware)
   }
 
   /**
    * Install a GET handler callback for a path
    */
-  fun get(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("get", path, *middleware);
+  fun get(path: String, middleware: RouteHandler.() -> Boolean) {
+    install("get", path, middleware)
   }
 
   /**
    * Install a POST handler callback for a path
    */
-  fun post(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("post", path, *middleware);
+  fun post(path: String, vararg middleware: RouteHandler.() -> Boolean) {
+    install("post", path, *middleware)
   }
 
   /**
    * Install a PATCH handler callback for a path
    */
-  fun patch(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("patch", path, *middleware);
+  fun patch(path: String, vararg middleware: RouteHandler.() -> Boolean) {
+    install("patch", path, *middleware)
   }
 
   /**
    * Install a PUT handler callback for a path
    */
-  fun put(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("put", path, *middleware);
+  fun put(path: String, vararg middleware: RouteHandler.() -> Boolean) {
+    install("put", path, *middleware)
   }
 
   /**
    * Install a DELETE handler callback for a path
    */
-  fun delete(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("delete", path, *middleware);
+  fun delete(path: String, vararg middleware: RouteHandler.() -> Boolean) {
+    install("delete", path, *middleware)
   }
 
   /**
    * Install a HEAD handler callback for a path
    */
-  fun head(path: String, vararg middleware: RouteHandler.() -> Unit) {
-    install("head", path, *middleware);
+  fun head(path: String, vararg middleware: RouteHandler.() -> Boolean) {
+    install("head", path, *middleware)
   }
 
   fun handleRequest(req: Request, res: Response, stackIndex: Int = 0) {
-    var index = stackIndex
-    while (true) {
-      if (index >= routes.size()) {
-        res.sendErrorResponse(404) // send a 404
-        break;
-      } else {
-        var route = routes[index]
-        if (req.checkRoute(route, res)) {
-          val handlerExtension: RouteHandler.() -> Unit = route.handler
-          val routeHandler = RouteHandler(req, res, { nextReq, nextRes ->
-            handleRequest(nextReq, nextRes, index + 1)
-          })
-          routeHandler.handlerExtension()
-          break;
-        } else {
-          index++
-        }
-      }
-    }
+      val rh = RouteHandler(req, res)
+      for (i in routes.stream().skip(stackIndex.toLong()).filter { req.checkRoute(it, res) })
+          if (i.handler.invoke(rh)) return
+      res.sendErrorResponse(404)
   }
 
 //

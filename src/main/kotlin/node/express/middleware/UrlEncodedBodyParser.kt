@@ -1,52 +1,60 @@
 package node.express.middleware
 
-import node.express.Response
-import node.express.Request
+import io.netty.handler.codec.http.multipart.Attribute
 import io.netty.handler.codec.http.multipart.DefaultHttpDataFactory
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder
 import node.express.Body
-import io.netty.handler.codec.http.multipart.Attribute
-import io.netty.handler.codec.http.multipart.InterfaceHttpData
-import java.util.HashSet
 import node.express.RouteHandler
+import java.util.*
 
 /**
  * Body parser for URL encoded data
  */
-public fun urlEncodedBodyParser(): RouteHandler.()->Unit {
+fun urlEncodedBodyParser(): RouteHandler.()->Boolean {
   return {
     if (req.body == null) {
       try {
         val decoder = HttpPostRequestDecoder(DefaultHttpDataFactory(false), req.request)
-        val data = decoder.getBodyHttpDatas()!!
-        if (data.size() > 0) {
+        val data = decoder.bodyHttpDatas!!
+        if (data.size > 0) {
           req.attributes.put("body", UrlEncodedBody(decoder))
         }
       } catch (e: Throwable) {
         // ignored
       }
     }
-    next()
+    false
   }
 }
 
-private class UrlEncodedBody(decoder: HttpPostRequestDecoder): Body {
-  val decoder = decoder
+private class UrlEncodedBody(val decoder: HttpPostRequestDecoder): Body {
+  override val entries: Set<Map.Entry<String, Any?>>
+    get() = HashSet(decoder.bodyHttpDatas!!.map { BodyEntry(it as Attribute) })
+  override val keys: Set<String>
+    get() = HashSet(decoder.bodyHttpDatas!!.map { it.name!! })
+  override val size: Int
+    get() = decoder.bodyHttpDatas!!.size
+  override val values: Collection<Any?>
+    get() = decoder.bodyHttpDatas!!.map { (it as Attribute).value }
+
+  override fun containsKey(key: String): Boolean {
+    return decoder.bodyHttpDatas!!.find { it.name == key } != null
+  }
 
   private fun getAttribute(key: String): Attribute? {
     return decoder.getBodyHttpData(key) as? Attribute
   }
   override fun get(key: String): Any? {
-    return getAttribute(key)?.getString()
+    return getAttribute(key)?.string
   }
   override fun asInt(key: String): Int? {
-    return getAttribute(key)?.getString()?.toInt()
+    return getAttribute(key)?.string?.toInt()
   }
   override fun asString(key: String): String? {
-    return getAttribute(key)?.getString()
+    return getAttribute(key)?.string
   }
   override fun asDouble(key: String): Double? {
-    return getAttribute(key)?.getString()?.toDouble()
+    return getAttribute(key)?.string?.toDouble()
   }
   override fun asInt(index: Int): Int? {
     throw UnsupportedOperationException()
@@ -57,42 +65,23 @@ private class UrlEncodedBody(decoder: HttpPostRequestDecoder): Body {
   override fun asNative(): Any {
     return decoder
   }
-  public override fun size(): Int {
-    return decoder.getBodyHttpDatas()!!.size()
+  override fun isEmpty(): Boolean {
+    return size == 0
   }
-  public override fun isEmpty(): Boolean {
-    return size() == 0
-  }
-  public override fun containsKey(key: Any?): Boolean {
-    return decoder.getBodyHttpDatas()!!.find { it.getName() == key } != null
-  }
-  public override fun containsValue(value: Any?): Boolean {
+  override fun containsValue(value: Any?): Boolean {
     throw UnsupportedOperationException()
   }
-  public override fun get(key: Any?): Any? {
-    return this.get(key as String)
-  }
-  public override fun keySet(): Set<String> {
-    return HashSet(decoder.getBodyHttpDatas()!!.map { it.getName()!! })
-  }
-  public override fun values(): Collection<Any?> {
-    return decoder.getBodyHttpDatas()!!.map { (it as Attribute).getValue() }
-  }
-  public override fun entrySet(): Set<Map.Entry<String, Any?>> {
-    return HashSet(decoder.getBodyHttpDatas()!!.map { BodyEntry(it as Attribute) })
-  }
   private data class BodyEntry(val att: Attribute): Map.Entry<String, Any?> {
-    public override fun hashCode(): Int {
+    override val key: String
+      get() = att.name!!
+    override val value: Any?
+      get() = att.value
+
+    override fun hashCode(): Int {
       return att.hashCode()
     }
-    public override fun equals(other: Any?): Boolean {
-      return att.equals(other)
-    }
-    public override fun getKey(): String {
-      return att.getName()!!
-    }
-    public override fun getValue(): Any? {
-      return att.getValue()
+    override fun equals(other: Any?): Boolean {
+      return att == other
     }
   }
 }

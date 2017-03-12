@@ -1,22 +1,20 @@
 package node.express.middleware.auth
 
-import node.express.Handler
-import node.express.Request
-import node.express.Response
-import node.util.splitToMap
 import node.crypto.decode
+import node.express.Request
 import node.express.RouteHandler
+import node.util.splitToMap
 
 /**
  * Middleware to parse (and optionally validate) basic authentication credentials. Credentials are
  * saved to the request attributes as 'username' and 'password'.
  */
-public fun basicAuth(realm: String, validator: (String?, String?)->Boolean): RouteHandler.()->Unit {
+fun basicAuth(realm: String, validator: (String?, String?)->Boolean): RouteHandler.()->Boolean {
   return {
-    var username: String? = null;
-    var password: String? = null;
+    var username: String? = null
+    var password: String? = null
     try {
-      var authHeaderValue = req.header("authorization")
+      val authHeaderValue = req.header("authorization")
       if (authHeaderValue != null) {
         var auth = authHeaderValue.splitToMap(" ", "type", "data")
         val authString = auth["data"]!!.decode("base64")
@@ -32,10 +30,11 @@ public fun basicAuth(realm: String, validator: (String?, String?)->Boolean): Rou
       if (username != null) {
         req.attributes["user"] = username
       }
-      next()
+      false
     } else {
       res.header("WWW-Authenticate", "Basic realm=\"" + realm + "\"")
-      res send 401
+      res.send(401)
+      true
     }
   }
 }
@@ -44,21 +43,22 @@ public fun basicAuth(realm: String, validator: (String?, String?)->Boolean): Rou
  * Parses token authorization and calls your validator to ensure that the requestor has permissions
  * to access the resource.
  */
-public fun tokenAuth(realm: String, validator: (String?,Request)->Boolean): RouteHandler.()->Unit {
+fun tokenAuth(realm: String, validator: (String?,Request)->Boolean): RouteHandler.()->Boolean {
   return {
     var token: String? = null
-    var authHeaderValue = req.header("authorization")
+    val authHeaderValue = req.header("authorization")
     if (authHeaderValue != null) {
       val auth = authHeaderValue.splitToMap("=", "type", "token")
       if (auth["type"] == "token") {
         token = auth["token"]!!.replace("^\"|\"$".toRegex(), "")
       }
     }
-    if (validator(token, req)) {
-      next()
-    } else {
+    if (validator(token, req))
+      false
+    else {
       res.header("WWW-Authenticate", "Basic realm=\"$realm\"")
-      res send 401
+      res.send(401)
+      true
     }
   }
 }

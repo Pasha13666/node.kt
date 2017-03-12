@@ -1,68 +1,48 @@
 package node.express
 
-import java.util.HashMap
-import io.netty.handler.codec.http.QueryStringDecoder
-import io.netty.handler.codec.http.HttpRequest
-import io.netty.handler.codec.http.HttpHeaders
-import java.util.Comparator
-import node.mimeType
 import io.netty.channel.Channel
-import jet.runtime.typeinfo.JetValueParameter
-import java.lang.reflect.Constructor
-import java.util.ArrayList
-import node.inject.*
-import node.util._with
 import io.netty.handler.codec.http.FullHttpRequest
+import io.netty.handler.codec.http.HttpHeaders
+import io.netty.handler.codec.http.QueryStringDecoder
+import node.mimeType
+import java.util.*
 
 /**
  * The Http server request object
  */
-class Request(app: Express, val request: FullHttpRequest, val channel: Channel) {
-  val app = app;
+class Request(val app: Express, val request: FullHttpRequest, val channel: Channel) {
 
-  var params: Map<String, Any> = HashMap();
-  var route: Route? = null;
-  var startTime = System.currentTimeMillis();
-  var qsd = QueryStringDecoder(request.getUri()!!);
-  val attributes: MutableMap<String, Any> = HashMap();
+  var params: Map<String, Any> = HashMap()
+  var route: Route? = null
+  var startTime = System.currentTimeMillis()
+  var qsd = QueryStringDecoder(request.uri!!)
+  val attributes: MutableMap<String, Any> = HashMap()
   val uri: String
-    get() = request.getUri()!!
+    get() = request.uri!!
 
-  var method: String = request.getMethod()!!.name()!!.toLowerCase()
+  var method: String = request.method!!.name()!!.toLowerCase()
 
   val path: String
     get() = qsd.path()!!
 
   val query = QueryString()
 
-  /**
-   * Provides an injector scope for each request.
-   */
-  val factory: Factory = {
-    val registry = (app.get("injection registry") as? Registry) ?: Registry()
-    _with (registry.factory(CacheScope.OPERATION)) {
-      it.install(this, javaClass<Request>())
-    }
-  }()
-
-  /**
+    /**
    * All of the cookies in a map
    */
   val cookies: Map<String, Cookie>
-    get() {
-      return attributes.get("cookies") as? Map<String, Cookie> ?: hashMapOf<String, Cookie>()
-    }
+    get() = attributes["cookies"] as? Map<String, Cookie> ?: hashMapOf<String, Cookie>()
 
-  inner class QueryString() {
+  inner class QueryString {
     fun get(key: String): String? {
-      var p = qsd.parameters();
+      val p = qsd.parameters()
       if (p != null) {
-        var v = p!![key];
-        if (v != null && v!!.size() > 0) {
-          return v?.get(0);
+        val v = p[key]
+        if (v != null && v.size > 0) {
+          return v[0]
         }
       }
-      return null;
+      return null
     }
   }
 
@@ -70,7 +50,7 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
    * Get a cookie value. Returns null if the cookie is not found
    */
   fun cookie(key: String): String? {
-    return cookies.get(key)?.value;
+    return cookies[key]?.value
   }
 
   /**
@@ -78,36 +58,27 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
    * request
    */
   fun checkRoute(route: Route, response: Response): Boolean {
-    var params = route.match(this, response);
+    val params = route.match(this, response)
     if (params != null) {
-      this.params = params!!;
-      this.route = route;
-      return true;
+      this.params = params
+      this.route = route
+      return true
     } else {
-      return false;
+      return false
     }
   }
 
   /**
    * Get the value of a header
    */
-  fun header(key: String): String? {
-    val headers = request.headers().getAll(key)!!
-    if (headers.size() == 0) return null
-    val head = headers.head
-    return head
-  }
+  fun header(key: String) = request.headers().getAll(key).firstOrNull()
 
   /**
    * Check if this request is of a certain content type
    */
   fun isType(contentType: String): Boolean {
-    var t = header(HttpHeaders.Names.CONTENT_TYPE)
-    return if (t != null) {
-      t.equals(contentType)
-    } else {
-      false
-    }
+    val t = header(HttpHeaders.Names.CONTENT_TYPE)
+    return t == contentType
   }
 
   /**
@@ -122,67 +93,56 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
      * Match a given mime type
      */
     fun match(t: String): Boolean {
-      var mime: String ? = t;
-      if (t.indexOf("/") == -1) {
-        mime = t.mimeType();
-      }
-      if (mime == null) return false;
-      var parts = mime!!.split("/".toRegex()).toTypedArray();
+      val mime: String ?
+      if (t.indexOf("/") == -1)
+          mime = t.mimeType()
+      else mime = t
+      if (mime == null)
+          return false
+      val parts = mime.split("/".toRegex()).toTypedArray()
       return (parts[0] == mainType || mainType == "*") &&
-      (parts[1] == subType || subType == "*");
+      (parts[1] == subType || subType == "*")
     }
   }
 
   private fun parseAccept(): List<Accept> {
-    var accept = header(HttpHeaders.Names.ACCEPT);
-    if (accept == null) return arrayListOf<Accept>();
-
-    var acceptArray = accept!!.split(",".toRegex()).toTypedArray();
-    return acceptArray.map<String, Accept> { it ->
-      var result: Accept = Accept("", "", 1.0);
-      var parts = it.split('/');
-      if (parts.size() == 2) {
-        var quality = parts[1].split(";".toRegex()).toTypedArray();
-        if (quality.size() == 2) {
-          var qVal = quality[1].split("=".toRegex()).toTypedArray()[1];
-          result = Accept(parts[0], quality[0], qVal.toDouble());
+    val accept: String? = header(HttpHeaders.Names.ACCEPT) ?: return arrayListOf()
+    val acceptArray = accept!!.split(",".toRegex()).toTypedArray()
+    return acceptArray.map { it ->
+      var result: Accept = Accept("", "", 1.0)
+      val parts = it.split('/')
+      if (parts.size == 2) {
+        val quality = parts[1].split(";".toRegex()).toTypedArray()
+        if (quality.size == 2) {
+          val qVal = quality[1].split("=".toRegex()).toTypedArray()[1]
+          result = Accept(parts[0], quality[0], qVal.toDouble())
         } else {
-          result = Accept(parts[0], quality[0], 1.0);
+          result = Accept(parts[0], quality[0], 1.0)
         }
       }
-      result;
-    }.sort(object : Comparator<Accept> {
-      public override fun compare(o1: Request.Accept, o2: Request.Accept): Int {
-        if (o1.quality - o2.quality > 0) return -1;
-        else if (o1.quality == o2.quality) return 0;
-        else return 1;
+      result
+    }.sortedWith(object : Comparator<Accept> {
+      override fun compare(o1: Request.Accept, o2: Request.Accept): Int {
+        if (o1.quality - o2.quality > 0) return -1
+        else if (o1.quality == o2.quality) return 0
+        else return 1
       }
-      public override fun equals(other: Any?): Boolean {
+      override fun equals(other: Any?): Boolean {
         throw UnsupportedOperationException()
       }
-    });
+    })
   }
 
   fun accepts(contentType: String): Boolean {
-    var accepts = parseAccept();
-    for (a in accepts) {
-      if (a.match(contentType)) {
-        return true;
-      }
-    }
-    return false;
+    return parseAccept().any { it.match(contentType) }
   }
 
   fun accepts(vararg contentTypes: String): String? {
-    var accepts = parseAccept();
+    val accepts = parseAccept()
     for (a in accepts) {
-      for (t in contentTypes) {
-        if (a.match(t)) {
-          return t;
-        }
-      }
+      return contentTypes.firstOrNull { a.match(it) }?: continue
     }
-    return null;
+    return null
   }
 
   /**
@@ -192,21 +152,16 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
    */
   fun accepts(vararg options: Pair<String, ()->Unit>) {
     val accepts = parseAccept()
-    for (entry in options) {
-      for (a in accepts) {
-        if (a.match(entry.component1())) {
-          entry.component2()()
-          return
-        }
-      }
-    }
+    for ((ct, cb) in options)
+        if(accepts.firstOrNull { it.match(ct) } != null)
+            return cb()
   }
 
   val body: Body?
-    get() = attributes.get("body") as? Body
+    get() = attributes["body"] as? Body
 
   fun body(key: String): Any? {
-    return body?.get(key);
+    return body?.get(key)
   }
 
   /**
@@ -214,7 +169,7 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
    * then query parameters
    */
   fun param(key: String): Any? {
-    var p = params.get(key)
+    var p = params[key]
     if (p == null) {
       p = this.body(key)
       if (p == null) {
@@ -227,48 +182,21 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
   /**
    * Creates a data object from the parameters in the request.
    */
-  fun <T> data(ty: Class<T>): T {
-    val constructors = Constructors.get(ty)
-
-    var bitmask = 0
-    var annotations = constructors.jet.getParameterAnnotations()
-    val types = constructors.jet.getParameterTypes()!!
-    val missing = ArrayList<String>()
-    val parameters = (0..annotations.size() - 1).mapTo(java.util.ArrayList<Any?>()) { index ->
-      val jetParam = annotations[index]!!.firstOrNull { it is JetValueParameter }!! as JetValueParameter
-      val paramType = types[index]
-      val value = this.param(jetParam.name())
-      if (value == null) {
-        if (false /*jetParam.hasDefaultValue()*/) {
-          bitmask += Math.pow(2.0, index.toDouble()).toInt()
-          value
-        } else if (jetParam.`type`().startsWith('?')) {
-          value
-        } else {
-          missing.add(jetParam.name())
-          ""
-        }
-      } else {
-        if (value is String) {
-          when (paramType) {
-            javaClass<Int>() -> value.toInt()
-            javaClass<List<String>>() -> value.split(",".toRegex()).toTypedArray()
-            else -> value
-          }
-        } else {
-          value
-        }
+  fun <T> data(ty: Class<T>): T? {
+      val obj: T = try {
+          ty.newInstance()
+      } catch (e: InstantiationException){
+          return null
+      } catch (e: IllegalAccessException){
+          return null
       }
-    }
-    if (missing.size() > 0) {
-      throw MissingParameterException(missing)
-    }
-    if (constructors.def != null) {
-      parameters.add(bitmask)
-      return constructors.def.newInstance(*(parameters.toArray()))!!
-    } else {
-      return constructors.jet.newInstance(*(parameters.toArray()))!!
-    }
+
+      ty.fields.filter { m -> m.name in params && ty.methods.find {
+                  it.name == "set${m.name[0].toUpperCase()}${m.name.substring(1)}"
+              } != null }.apply { requireParams(*map { it.name }.toTypedArray()) }.forEach {
+          it.set(obj, params[it.name])
+      }
+      return obj
   }
 
   /**
@@ -276,11 +204,7 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
    * are indeed provided
    */
   fun requireParams(vararg names: String) {
-    for (name in names) {
-      if (params.get(name) == null) {
-        throw ExpressException(400, "Missing parameter: $name")
-      }
-    }
+    throw ExpressException(400, "Missing parameter: ${names.firstOrNull { params[it] == null }?:return}")
   }
 
   /**
@@ -289,41 +213,6 @@ class Request(app: Express, val request: FullHttpRequest, val channel: Channel) 
   fun isWebSocketRequest(): Boolean {
     val upgrade = request.headers().get("Upgrade")
     return (upgrade == "websocket")
-  }
-}
-
-data class Constructors<T>(val jet: Constructor<T>, val def: Constructor<T>?) {
-  companion object {
-    private var dataConstructors: MutableMap<Class<*>,Constructors<*>>? = null
-
-    fun <T> get(ty: Class<T>): Constructors<T> {
-      if (dataConstructors == null) {
-        dataConstructors = HashMap<Class<*>,Constructors<*>>()
-      }
-
-      // find the constructor with the JetValueParameter annotations
-      val constructor = (ty.getConstructors().firstOrNull {
-        if (it.getParameterTypes()!!.size() > 0) {
-          it.getParameterAnnotations()[0]!!.firstOrNull { it is JetValueParameter } != null
-        } else {
-          false
-        }
-      } ?: ty.getConstructor()) as Constructor<T>
-
-      // next, find the constructor that matches in case there are default types
-      val types = constructor.getParameterTypes()!!
-      val extended = Array(types.size() + 1, { index->
-        if (index < (types.size())) types[index] else javaClass<Int>()
-      })
-      val defCon = {
-        try {
-          ty.getConstructor(*extended)
-        } catch (t: Throwable) {
-          null
-        }
-      }()
-      return Constructors(constructor, defCon)
-    }
   }
 }
 

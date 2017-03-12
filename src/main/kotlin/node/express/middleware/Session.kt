@@ -1,20 +1,13 @@
 package node.express.middleware.session
 
+import node.express.Cookie
+import node.express.Handler
 import node.express.Request
 import node.express.Response
-import node.express.Handler
-import java.util.HashMap
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
-import node.util.asNative
-import node.util.putNative
-import node.util.logDebug
+import node.util.json.asJson
 import node.util.log
-import java.util.logging.Level
-import node.express.Cookie
 import node.util.logSevere
-import node.util.date.inSeconds
+import java.util.logging.Level
 
 // Interface for a session
 interface Session {
@@ -36,7 +29,7 @@ class MemorySession: Session {
     return store[key]
   }
   override fun set(key: String, value: Any) {
-    store[key] = value;
+    store[key] = value
   }
   override fun save() {
     // do nothing
@@ -51,11 +44,11 @@ class MemorySession: Session {
  * Base class for Session support. Default implementation just stores session data
  * in memory, which is not scalable across multiple servers.
  */
-open class SessionSupport(): Handler {
+open class SessionSupport : Handler {
   override fun exec(req: Request, res: Response, next: () -> Unit) {
     val session = newSession(req, res)
     req.attributes["session"] = session
-    res.on("header", { data ->
+    res.on("header", {
       session.save()
     })
     next()
@@ -90,28 +83,27 @@ val Response.session: Session
  * up to about 4K)
  */
 class CookieStoreSession(expirationTime: Long, val sessionKey: String = "_node_kt_session"): SessionSupport() {
-  val json = ObjectMapper()
   var maxAge: Long = expirationTime
 
   fun withMaxAge(maxAge: Long): CookieStoreSession {
-    this.maxAge = maxAge;
-    return this;
+    this.maxAge = maxAge
+    return this
   }
 
   override fun newSession(req: Request, res: Response): Session {
-    return CookieSession(req, res, sessionKey);
+    return CookieSession(req, res, sessionKey)
   }
 
   inner class CookieSession(val req: Request, val res: Response, val cookieName: String): Session {
-    var jsonNode: ObjectNode? = null
+    var jsonNode: MutableMap<String, Any?>? = null
     var hasChanged: Boolean = false
 
     init {
-      var cookieContent = req.cookie(cookieName)
+      val cookieContent = req.cookie(cookieName)
       if (cookieContent != null) {
         try {
-          var cookieObject = json.readTree(cookieContent) as? ObjectNode
-          if (cookieObject != null) jsonNode = cookieObject
+          val cookieObject = cookieContent.asJson() as? Map<String, Any?>
+          if (cookieObject != null) jsonNode = cookieObject.toMutableMap()
         } catch (t: Throwable) {
           log(Level.FINE, "Error parsing cookie: " + cookieContent, t)
         }
@@ -120,16 +112,16 @@ class CookieStoreSession(expirationTime: Long, val sessionKey: String = "_node_k
 
     override fun get(key: String): Any? {
       if (jsonNode == null) return null
-      val result = jsonNode!!.get(key);
-      return result?.asNative();
+      val result = jsonNode!![key]
+      return result
     }
 
     override fun set(key: String, value: Any) {
       hasChanged = true
       if (jsonNode == null) {
-        jsonNode = json.createObjectNode()
+        jsonNode = HashMap()
       }
-      jsonNode!!.putNative(key, value);
+      jsonNode!![key] = value
     }
 
     override fun save() {
@@ -143,8 +135,8 @@ class CookieStoreSession(expirationTime: Long, val sessionKey: String = "_node_k
     }
 
     override fun clear() {
-      hasChanged = true;
-      jsonNode = json.createObjectNode()
+      hasChanged = true
+      jsonNode = HashMap()
     }
   }
 

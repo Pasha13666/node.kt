@@ -19,17 +19,18 @@ val stateGenerator = RandomStringGenerator(15)
  */
 class OAuth(val express: Express,
             val localPath: String = "/oauth/login/:provider") {
-  val providers = HashMap<String, OAuthProvider>();
+  val providers = HashMap<String, OAuthProvider>()
 
   init {
     express.get(localPath, {
       val providerId = req.param("provider") as String
-      val provider = providers.get(providerId) ?: throw NotFoundException()
+      val provider = providers[providerId] ?: throw NotFoundException()
 
       val scope = req.param("scope") as String?
       val redirect = "http://${req.header("Host")}/oauth/callback/$providerId"
       res.redirect("${provider.authUrl}?client_id=${provider.clientId}&redirect_uri=${redirect.encodeUriComponent()}${
         if (scope != null){"&scope=${scope.encodeUriComponent()}"}else{""}}&state=${provider.state}")
+      true
     })
 
     express.get("/oauth/callback/:provider", {
@@ -62,6 +63,7 @@ class OAuth(val express: Express,
       } else {
         provider.authFail(req, res)
       }
+      true
     })
   }
 

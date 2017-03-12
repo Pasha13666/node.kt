@@ -1,17 +1,13 @@
 package node.express.middleware
 
-import node.express.Handler
-import node.express.Request
-import node.express.Response
-import java.io.File
-import java.util.HashMap
-import java.io.FileNotFoundException
 import node.express.RouteHandler
+import java.io.FileNotFoundException
+import java.util.*
 
 /**
  * Automatically processes templates relative to the location of the request
  */
-public fun renderer(): RouteHandler.()->Unit {
+fun renderer(): RouteHandler.()->Boolean {
   val files = HashMap<String, Boolean>()
   return {
     val requestPath = req.param("*") as? String ?: ""
@@ -27,15 +23,14 @@ public fun renderer(): RouteHandler.()->Unit {
     if (!files.containsKey(requestPath)) {
       try {
         res.render(path)
+        true
       } catch(e: FileNotFoundException) {
         files.put(requestPath, false)
-        next()
+        false
       } catch(e: IllegalArgumentException) {
         files.put(requestPath, false)
-        next()
+        false
       }
-    } else {
-      next()
-    }
+    } else false
   }
 }

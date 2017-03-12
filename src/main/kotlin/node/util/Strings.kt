@@ -24,11 +24,11 @@ fun String.extension(): String? {
 fun String.encodeUriComponent(): String {
   return URLEncoder.encode(this, "UTF-8")
           .replace("\\+".toRegex(), "%20")
-          .replace("\\%21".toRegex(), "!")
-          .replace("\\%27".toRegex(), "'")
-          .replace("\\%28".toRegex(), "(")
-          .replace("\\%29".toRegex(), ")")
-          .replace("\\%7E".toRegex(), "~");
+          .replace("%21".toRegex(), "!")
+          .replace("%27".toRegex(), "'")
+          .replace("%28".toRegex(), "(")
+          .replace("%29".toRegex(), ")")
+          .replace("%7E".toRegex(), "~")
 }
 
 /**
@@ -38,18 +38,14 @@ fun String.toHTMLAttribute(): String {
   return this.replace("\"".toRegex(), "&quot;").replace("'".toRegex(), "&#39;")
 }
 
-fun String.decodeUriComponent() = URLDecoder.decode(this, "UTF-8")
+fun String.decodeUriComponent() = URLDecoder.decode(this, "UTF-8")!!
 
 fun Array<String>.toMap(vararg keys: String): Map<String, String> {
   val result = HashMap<String, String>()
-  var i = 0
-  for (key in keys) {
-    if (this.size() > i) {
+  for ((i, key) in keys.withIndex()) {
+    if (this.size > i)
       result[key] = this[i]
-    } else {
-      throw ParseException("No enough values in string to match keys", 0)
-    }
-    i++
+    else throw ParseException("No enough values in string to match keys", 0)
   }
   return result
 }
@@ -65,20 +61,20 @@ fun String.splitToMap(delimiter: String, vararg keys: String): Map<String, Strin
 // stores symbols used by the random string generator
 private val randomSymbols: CharArray = {
   val symbols = CharArray(36)
-  for (idx in 0..10 - 1) symbols[idx] = ('0' + idx).toChar()
-  for (idx in 10..36 - 1) symbols[idx] = ('a' + idx - 10).toChar()
+  for (idx in 0..10 - 1) symbols[idx] = '0' + idx
+  for (idx in 10..36 - 1) symbols[idx] = 'a' + idx - 10
   symbols
 }()
 
 /**
  * Generates random strings of a given length using numbers and lowercase letters.
  */
-public class RandomStringGenerator(val length: Int) {
+class RandomStringGenerator(val length: Int) {
   private val random = Random()
 
   fun next(): String {
     val buf = CharArray(length)
-    for (idx in 0..length-1) buf[idx] = randomSymbols[random.nextInt(randomSymbols.size())]
+    for (idx in 0..length-1) buf[idx] = randomSymbols[random.nextInt(randomSymbols.size)]
     return String(buf)
   }
 }
@@ -92,7 +88,7 @@ fun String.after(seq: String): String {
   if (index < 0) {
     return ""
   }
-  return this.substring(index + seq.length())
+  return this.substring(index + seq.length)
 }
 
 /**

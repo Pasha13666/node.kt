@@ -1,18 +1,13 @@
 package node.template
 
-import node.util._if
-
 /**
  * A version of a while loop that takes the string output of each iteration
  * and concatenates it and returns it.
  */
 fun While(eval: ()->Boolean, out: ()->String):String {
   val sb = StringBuilder()
-  while (eval()) {
-    _if(out()) { str->
-      sb.append(str)
-    }
-  }
+  while (eval())
+      sb.append(out())
   return sb.toString()
 }
 
@@ -20,7 +15,7 @@ fun While(eval: ()->Boolean, out: ()->String):String {
  * A version of a for loop that takes the string output of each iteration
  * and concatenates it and returns it
  */
-fun For(iterator: Iterable<Any?>, out: (v:Any?)->String): String {
+fun<T> For(iterator: Iterable<T>, out: (v:T)->String): String {
   return For(iterator.iterator(), out)
 }
 
@@ -28,12 +23,8 @@ fun For(iterator: Iterable<Any?>, out: (v:Any?)->String): String {
  * A version of a for loop that takes the string output of each iteration
  * and concatenates it and returns it
  */
-fun For(iterator: Iterator<Any?>, out: (v:Any?)->String?): String {
+fun<T> For(iterator: Iterator<T>, out: (v:T)->String?): String {
   val sb = StringBuilder()
-  iterator.forEach {
-    _if(out(it)) { txt->
-      sb.append(txt)
-    }
-  }
+  iterator.forEach { sb.append(out(it)) }
   return sb.toString()
 }

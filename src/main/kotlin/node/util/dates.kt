@@ -27,7 +27,7 @@ fun String.toDate(pattern: String): Date {
  */
 fun Date.toISO8601String(): String {
   val cal = Calendar.getInstance()
-  cal.setTime(this)
+  cal.time = this
   return javax.xml.bind.DatatypeConverter.printDateTime(cal)!!
 }
 
@@ -36,7 +36,7 @@ fun Date.toISO8601String(): String {
  */
 fun String.parseISO8601(): Date {
   val cal = javax.xml.bind.DatatypeConverter.parseDateTime(this)!!
-  return cal.getTime()
+  return cal.time
 }
 
 fun Int.seconds(): Long = this.toLong() * 1000

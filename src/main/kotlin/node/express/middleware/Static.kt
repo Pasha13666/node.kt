@@ -1,25 +1,21 @@
 package node.express.middleware
 
-import node.express.Request
-import node.express.Response
-import java.io.File
-import java.util.HashMap
 import node.express.RouteHandler
 import node.mimeType
-import node.util._withNotNull
+import java.io.File
+import java.util.*
 
 /**
  * Middleware for serving a tree of static files
  */
-public fun static(basePath: String): RouteHandler.()->Unit {
+fun static(basePath: String): RouteHandler.()->Boolean {
   val files = HashMap<String, File>() // a cache of paths to files to improve performance
   return {
-    if (req.method != "get" && req.method != "head")
-      next()
+    if (req.method != "get" && req.method != "head") false
     else {
-      var requestPath = req.param("*") as? String ?: ""
+      val requestPath = req.param("*") as? String ?: ""
 
-      var srcFile: File? = files[requestPath] ?: {
+      val srcFile: File? = files[requestPath] ?: {
         var path = requestPath
         if (!path.startsWith("/")) {
           path = "/" + path
@@ -27,7 +23,7 @@ public fun static(basePath: String): RouteHandler.()->Unit {
         if (path.endsWith("/")) {
           path += "index.html"
         }
-        var f = File(basePath + path)
+        val f = File(basePath + path)
         if (f.exists()) {
           files.put(requestPath, f)
           f
@@ -38,35 +34,32 @@ public fun static(basePath: String): RouteHandler.()->Unit {
 
       if (srcFile != null) {
         res.sendFile(srcFile)
-      } else {
-        next()
-      }
+          true
+      } else false
     }
   }
 }
 
 /**
- * Middleware that servers static resources from the code pacakage
+ * Middleware that servers static resources from the code package
  */
-public fun staticResources(classBasePath: String): RouteHandler.()->Unit {
+fun staticResources(classBasePath: String): RouteHandler.()->Boolean {
     return {
-        if (req.method != "get" && req.method != "head")
-            next()
+        if (req.method != "get" && req.method != "head") false
         else {
             var requestPath = req.param("*") as? String ?: ""
-            if (requestPath.length() > 0 && requestPath.charAt(0) == '/') {
+            if (requestPath.isNotEmpty() && requestPath[0] == '/') {
                 requestPath = requestPath.substring(1)
             }
 
-            var resource = Thread.currentThread().getContextClassLoader().getResource(classBasePath + requestPath)
+            val resource = Thread.currentThread().contextClassLoader.getResource(classBasePath + requestPath)
             if (resource != null) {
-                _withNotNull(requestPath.mimeType()) { res.contentType(it) }
+                requestPath.mimeType().apply { if (this != null) res.contentType(this) }
                 resource.openStream().use {
                     res.send(it)
                 }
-            } else {
-                next()
-            }
+                true
+            } else false
         }
     }
 }

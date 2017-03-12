@@ -1,7 +1,7 @@
 package node.express.html
 
-interface Element {
-    fun render(builder: StringBuilder, indent: String)
+abstract class Element {
+    abstract fun render(builder: StringBuilder, indent: String)
 
     override fun toString(): String {
         val builder = StringBuilder()
@@ -10,17 +10,17 @@ interface Element {
     }
 }
 
-class TextElement(val text: String) : Element {
+class TextElement(val text: String) : Element() {
     override fun render(builder: StringBuilder, indent: String) {
-        builder.append("$text")
+        builder.append(text)
     }
 }
 
-abstract class Tag(val name: String) : Element {
+abstract class Tag(val name: String) : Element() {
     val children = arrayListOf<Element>()
     val attributes = hashMapOf<String, String>()
 
-    fun initTag<T : Element>(tag: T, init: T.() -> Unit): T {
+    fun <T : Element> initTag(tag: T, init: T.() -> Unit): T {
         tag.init()
         children.add(tag)
         return tag
@@ -28,17 +28,15 @@ abstract class Tag(val name: String) : Element {
 
     override fun render(builder: StringBuilder, indent: String) {
         builder.append("<$name${renderAttributes()}>")
-        for (c in children) {
+        for (c in children)
             c.render(builder, indent + "  ")
-        }
         builder.append("</$name>")
     }
 
     fun renderAttributes(): String? {
         val builder = StringBuilder()
-        for (a in attributes.keySet()) {
+        for (a in attributes.keys)
             builder.append(" $a=\"${attributes[a]}\"")
-        }
         return builder.toString()
     }
 
@@ -47,9 +45,8 @@ abstract class Tag(val name: String) : Element {
     }
 
     fun attribute(key: String, value: String?) {
-        if (value != null) {
+        if (value != null)
             attributes[key] = value
-        }
     }
 }
 
@@ -76,19 +73,19 @@ class HTML(clas: String? = null) : TagWithText("html") {
     }
 }
 
-class Head() : TagWithText("head") {
-    fun base(href: String) { +Base(href) }
+class Head : TagWithText("head") {
+    fun base(href: String) = children.add(Base(href))
 
     fun title(init: Title.() -> Unit) = initTag(Title(), init)
 
-    fun meta(vararg values: Pair<String, String>) { +Meta(*values) }
+    fun meta(vararg values: Pair<String, String>) = children.add(Meta(*values))
 
     fun link(rel: String? = null,
              href: String? = null,
-             type: String? = null) { +Link(rel, href, type) }
+             type: String? = null) = children.add(Link(rel, href, type))
 
-    fun script(src: String) { +Script(src) }
-    fun css(src: String) { link(rel = "stylesheet", href=src, type="text/css") }
+    fun script(src: String) = children.add(Script(src))
+    fun css(src: String) = link(rel = "stylesheet", href=src, type="text/css")
 }
 
 class Meta(vararg values: Pair<String, String>): UnclosedTag("meta") {
@@ -119,10 +116,10 @@ class Base(href: String): UnclosedTag("base") {
     }
 }
 
-class Title() : TagWithText("title")
+class Title : TagWithText("title")
 
 abstract class BodyTag(name: String, clas: String? = null) : TagWithText(name) {
-    public var clas: String?
+    var clas: String?
         get() = attributes["class"]
         set(value) {
             attribute("class", value)
@@ -149,9 +146,10 @@ abstract class GeneralBodyTag(name: String, clas: String? = null) : BodyTag(name
         if (clas != null) div.clas = clas
     }
     fun a(href: String, clas: String? = null, init: A.() -> Unit) = initTag(A(href, clas), init)
+    operator fun String.unaryPlus() = children.add(TextElement(this))
 }
 
-class Body() : GeneralBodyTag("body")
+class Body : GeneralBodyTag("body")
 class UL(clas: String? = null) : BodyTag("ul") {
     fun li(clas: String? = null, init: LI.() -> Unit) = initTag(LI(clas), init)
 }
@@ -171,8 +169,8 @@ class HEADER(clas: String? = null) : GeneralBodyTag("header", clas)
 class DIV(clas: String? = null): GeneralBodyTag("div", clas)
 
 class A(inHref: String, clas: String? = null) : GeneralBodyTag("a") {
-    public var href: String
-        get() = attributes["href"]
+    var href: String
+        get() = attributes["href"]!!
         set(value) {
             attributes["href"] = value
         }

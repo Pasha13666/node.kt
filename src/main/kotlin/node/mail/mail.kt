@@ -1,22 +1,20 @@
 package node.mail
 
-import kotlin.properties.Delegates
-import javax.mail.internet.MimeMessage
-import javax.mail.internet.InternetAddress
-import javax.mail.Message.RecipientType.TO
-import javax.mail.Transport
-import java.util.Properties
-import node.util._with
 import node.configuration.Configuration
+import java.util.*
+import javax.mail.Message.RecipientType.TO
 import javax.mail.Session
+import javax.mail.Transport
+import javax.mail.internet.InternetAddress
+import javax.mail.internet.MimeMessage
 
-private val session by Delegates.lazy {
+private val session by lazy {
   val properties = Properties()
 
   // load generic properties
-  _with (Configuration.get("mail.properties")) {
+  Configuration.get("mail.properties").also {
     if (it is Map<*,*>) {
-      it.entrySet().forEach {
+      it.forEach {
         if (it.key is String && it.value is String) {
           properties.setProperty(it.key as String, it.value as String)
         }
@@ -26,7 +24,7 @@ private val session by Delegates.lazy {
 
   // load address mappings
   val session = Session.getDefaultInstance(properties)!!
-  Configuration.map("mail.protocols").entrySet().forEach {
+  Configuration.map("mail.protocols").forEach {
     if (it.value is String) {
       session.setProtocolForAddress(it.key, it.value as String)
     }
@@ -41,7 +39,7 @@ fun sendMail(to: String, from: String, subject: String, content: String) {
   val message = MimeMessage(session)
   message.setFrom(InternetAddress(from))
   message.addRecipient(TO, InternetAddress(to))
-  message.setSubject(subject)
+  message.subject = subject
   message.setText(content)
   Transport.send(message)
 }
@@ -53,7 +51,7 @@ fun sendHTMLMail(to: String, from: String, subject: String, html: String, text: 
   val message = MimeMessage(session)
   message.setFrom(InternetAddress(from))
   message.addRecipient(TO, InternetAddress(to))
-  message.setSubject(subject)
+  message.subject = subject
   if (text != null) message.setText(text)
   message.setContent(html, "text/html")
   Transport.send(message)

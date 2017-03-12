@@ -17,9 +17,9 @@ fun String.encrypt(algorithm: String, encoding: String? = null): String {
     return BCrypt.hashpw(this, BCrypt.gensalt())!!
   }
 
-  var md = MessageDigest.getInstance(algorithm)
+  val md = MessageDigest.getInstance(algorithm)
   md.update(this.toByteArray())
-  var bytes = md.digest()!!
+  val bytes = md.digest()!!
   if (encoding != null) {
     return bytes.encode(encoding)
   } else {
@@ -49,10 +49,10 @@ fun String.hmac(algorithm: String, salt: String, encoding: String): String {
  * Encode a byte array as a string
  */
 fun ByteArray.encode(encoding: String): String {
-  var result: String
+  val result: String
   if (encoding == "hex") {
-    var big = BigInteger(1, this)
-    var length = this.size().shl(1)
+    val big = BigInteger(1, this)
+    val length = this.size shl 1
     result = java.lang.String.format("%0" + length + "X", big)
   } else if (encoding == "base64") {
     result = Base64.encodeBase64String(this)!!
@@ -77,7 +77,6 @@ fun String.decode(encoding: String): String {
  * Decode a string with a given encoding into a byte array. Only
  * "base64" is currently supported.
  */
-public
 fun String.decodeToBytes(encoding: String): ByteArray {
   if (encoding == "base64") {
     return Base64.decodeBase64(this)!!

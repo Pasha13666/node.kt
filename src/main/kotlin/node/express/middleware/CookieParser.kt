@@ -1,20 +1,17 @@
 package node.express.middleware
 
-import node.express.Request
-import node.express.Response
-import node.express.Handler
 import node.express.Cookie
 import node.express.RouteHandler
 
 /**
  * Defines a cookie parser
  */
-public fun cookieParser(): RouteHandler.()->Unit {
+fun cookieParser(): RouteHandler.()->Boolean {
   return {
-    var cookiesString = req.header("cookie")
-    var cookieMap = hashMapOf<String, Cookie>()
+    val cookiesString = req.header("cookie")
+    val cookieMap = hashMapOf<String, Cookie>()
     if (cookiesString != null) {
-      var pairs = cookiesString!!.split("[;,]".toRegex()).toTypedArray()
+      val pairs = cookiesString.split("[;,]".toRegex()).toTypedArray()
       pairs.forEach {
         val cookie = Cookie.parse(it)
         if (!cookieMap.containsKey(cookie.key)) {
@@ -22,7 +19,7 @@ public fun cookieParser(): RouteHandler.()->Unit {
         }
       }
     }
-    req.attributes.set("cookies", cookieMap)
-    next()
+    req.attributes["cookies"] = cookieMap
+    false
   }
 }

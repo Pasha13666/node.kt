@@ -11,7 +11,7 @@ import node.util.json.*
 /**
  * Easy to use API for loading and working with settings from files.
  */
-public object Configuration {
+object Configuration {
   private var _root: HashMap<String, Any?>? = null
   val root: HashMap<String, Any?>  // should be private, but blocked by KT-3281
     get() {
@@ -38,16 +38,16 @@ public object Configuration {
    * @returns the setting value. Null if not found.
    */
   fun get(path: String): Any? {
-    var components = path.split("\\.".toRegex()).toTypedArray()
+    val components = path.split("\\.".toRegex()).toTypedArray()
     var value: Any? = this.root
     for (component in components) {
       if (value != null && value is Map<*, *>) {
-        value = value.get(component)
+        value = value[component]
       } else {
-        return null;
+        return null
       }
     }
-    return value;
+    return value
   }
 
   /**
@@ -71,6 +71,7 @@ public object Configuration {
     return get(path, def) as Int
   }
 
+  @Suppress("UNCHECKED_CAST")
   fun map(path: String): Map<String, Any> {
     var m = get(path) as? Map<*,*>
     if (m == null) {
@@ -86,32 +87,33 @@ public object Configuration {
     path.forEach { mergeFile(root, it) }
   }
 
+  @Suppress("UNCHECKED_CAST")
   private fun mergeFile(target: MutableMap<String, Any?>, filePath: String): MutableMap<String, Any?> {
     this.log("Loading configuration file $filePath")
-    var data = File(filePath).json(javaClass<Map<String, Any?>>())
-    merge(target, data);
+    val data = File(filePath).asJson() as Map<String, Any?>
+    merge(target, data)
     return target
   }
 
+  @Suppress("UNCHECKED_CAST")
   private fun merge(m1: MutableMap<String, Any?>, m2: Map<String, Any?>) {
-    var entries = m2.entrySet();
-    for (entry in entries) {
-      if (entry.key == "include") {
-        when (entry.value) {
-          is String -> mergeFile(m1, (entry.value as String))
-          is List<*> -> (entry.value!! as List<String>).forEach { mergeFile(m1, it) }
+    val entries = m2.entries
+    for ((key, value) in entries) {
+      if (key == "include") {
+        when (value) {
+          is String -> mergeFile(m1, value)
+          is List<*> -> (value as List<String>).forEach { mergeFile(m1, it) }
           else -> throw FormatException("Contents of include must be either String or list of Strings")
         }
       } else {
-        var srcValue = m1.get(entry.key)
-        var value = entry.value
+        val srcValue = m1[key]
         if (srcValue == null) {
-          m1.put(entry.key, value)
+          m1.put(key, value)
         } else {
           if (srcValue is Map<*, *> && value is Map<*, *>) {
             merge(srcValue as MutableMap<String, Any?>, value as Map<String, Any?>)
           } else {
-            m1.put(entry.key, value);
+            m1.put(key, value)
           }
         }
       }

@@ -28,8 +28,8 @@ class Cookie(val key: String, val value: String) {
    * (and not Javascripts)
    */
   fun httpOnly(x: Boolean): Cookie {
-    httpOnly = x;
-    return this;
+    httpOnly = x
+    return this
   }
 
   /**
@@ -37,7 +37,7 @@ class Cookie(val key: String, val value: String) {
    * closed (ie. the browser window is closed)
    */
   fun maxAge(age: Long): Cookie {
-    expires = Date(Date().getTime() + age)
+    expires = Date(Date().time + age)
     return this
   }
 
@@ -45,14 +45,14 @@ class Cookie(val key: String, val value: String) {
    * Convert the cookie to a string representation
    */
   override fun toString(): String {
-    var pairs = ArrayList<String>()
+    val pairs = ArrayList<String>()
     pairs.add(key + "=" + value.encodeUriComponent())
     if (domain != null) pairs.add("Domain=" + domain)
     if (path != null) pairs.add("Path=" + path)
     if (expires != null) pairs.add("Expires=" + expires!!.asHttpFormatString())
-    if (httpOnly) pairs.add("HttpOnly");
+    if (httpOnly) pairs.add("HttpOnly")
 
-    return pairs.join("; ");
+    return pairs.joinToString("; ")
   }
 
   companion object {
@@ -64,11 +64,11 @@ class Cookie(val key: String, val value: String) {
       if (eq_idx == -1) {
         return Cookie("", str.trim().decodeUriComponent())
       }
-      var key = str.substring(0, eq_idx).trim()
+      val key = str.substring(0, eq_idx).trim()
       var value = str.substring(++eq_idx).trim().decodeUriComponent()
 
-      if (value.charAt(0) == '\"') {
-        value = value.substring(1, value.length() - 1)
+      if (value[0] == '\"') {
+        value = value.substring(1, value.length - 1)
       }
       return Cookie(key, value)
     }

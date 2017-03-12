@@ -1,15 +1,11 @@
 package node.template
 
-import kotlin.test.assertEquals
-import java.io.StringWriter
-import java.io.Writer
+import node.util.until
 import java.io.File
 import java.io.PrintWriter
-import java.io.BufferedReader
-import java.io.StringReader
-import node.util.after
-import node.util.until
-import java.util.Stack
+import java.io.StringWriter
+import java.io.Writer
+import java.util.*
 
 /**
  * 
@@ -28,7 +24,7 @@ class KtTemplate(w: Writer) {
 
   inner class Header(val writer: Appendable): State {
     init {
-      writer.append("import java.io.StringWriter\n");
+      writer.append("import java.io.StringWriter\n")
     }
 
     val builder = StringBuilder()
@@ -197,11 +193,11 @@ class KtTemplate(w: Writer) {
 
 fun processFile(file: File) {
   val writer = StringWriter()
-  val outFile = File(file.getParent(), "${file.name.until(".")}.kt")
+  val outFile = File(file.parent, "${file.name.until(".")}.kt")
 
   val tmpl = KtTemplate(writer)
   tmpl.process(file.readText())
-  outFile.writeText(writer.getBuffer().toString())
+  outFile.writeText(writer.buffer.toString())
 }
 
 fun main(args: Array<String>) {

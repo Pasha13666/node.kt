@@ -9,5 +9,5 @@ interface Engine {
    * @param path a path to the template
    * @param data data that is passed to the page
    */
-  fun render(path: String, data: Map<String, *>): String;
+  fun render(path: String, data: Map<String, *>): String
 }
