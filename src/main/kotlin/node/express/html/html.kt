@@ -1,5 +1,9 @@
 package node.express.html
 
+@DslMarker
+annotation class HTMLMaker
+
+@HTMLMaker
 abstract class Element {
     abstract fun render(builder: StringBuilder, indent: String)
 
@@ -10,12 +14,14 @@ abstract class Element {
     }
 }
 
+@HTMLMaker
 class TextElement(val text: String) : Element() {
     override fun render(builder: StringBuilder, indent: String) {
         builder.append(text)
     }
 }
 
+@HTMLMaker
 abstract class Tag(val name: String) : Element() {
     val children = arrayListOf<Element>()
     val attributes = hashMapOf<String, String>()
@@ -41,7 +47,7 @@ abstract class Tag(val name: String) : Element() {
     }
 
     fun Element.plus() {
-        children.add(this)
+        this@Tag.children.add(this)
     }
 
     fun attribute(key: String, value: String?) {
@@ -50,19 +56,26 @@ abstract class Tag(val name: String) : Element() {
     }
 }
 
+@HTMLMaker
 abstract class UnclosedTag(name: String): Tag(name) {
     override fun render(builder: StringBuilder, indent: String) {
         builder.append("<$name${renderAttributes()}>")
     }
 }
 
+@HTMLMaker
 abstract class TagWithText(name: String) : Tag(name) {
     fun String.plus() {
         children.add(TextElement(this))
     }
 }
 
-class HTML(clas: String? = null) : TagWithText("html") {
+@HTMLMaker
+class HTML(clas: String? = null, init: HTML.() -> Unit) : TagWithText("html") {
+    init {
+        init()
+    }
+
     fun head(init: Head.() -> Unit) = initTag(Head(), init)
 
     fun body(init: Body.() -> Unit) = initTag(Body(), init)
@@ -73,6 +86,7 @@ class HTML(clas: String? = null) : TagWithText("html") {
     }
 }
 
+@HTMLMaker
 class Head : TagWithText("head") {
     fun base(href: String) = children.add(Base(href))
 
@@ -88,12 +102,14 @@ class Head : TagWithText("head") {
     fun css(src: String) = link(rel = "stylesheet", href=src, type="text/css")
 }
 
+@HTMLMaker
 class Meta(vararg values: Pair<String, String>): UnclosedTag("meta") {
     init {
         values.forEach { attributes[it.first] = it.second }
     }
 }
 
+@HTMLMaker
 class Link(rel: String?,
            href: String?,
            type: String?): UnclosedTag("link") {
@@ -104,20 +120,24 @@ class Link(rel: String?,
     }
 }
 
+@HTMLMaker
 class Script(src: String): Tag("script") {
     init {
         attribute("src", src)
     }
 }
 
+@HTMLMaker
 class Base(href: String): UnclosedTag("base") {
     init {
         attribute("href", href)
     }
 }
 
+@HTMLMaker
 class Title : TagWithText("title")
 
+@HTMLMaker
 abstract class BodyTag(name: String, clas: String? = null) : TagWithText(name) {
     var clas: String?
         get() = attributes["class"]
@@ -126,6 +146,7 @@ abstract class BodyTag(name: String, clas: String? = null) : TagWithText(name) {
         }
 }
 
+@HTMLMaker
 abstract class GeneralBodyTag(name: String, clas: String? = null) : BodyTag(name, clas) {
     fun b(clas: String? = null, init: B.() -> Unit) = initTag(B(clas), init)
     fun p(clas: String? = null, init: P.() -> Unit) = initTag(P(clas), init)
@@ -149,25 +170,48 @@ abstract class GeneralBodyTag(name: String, clas: String? = null) : BodyTag(name
     operator fun String.unaryPlus() = children.add(TextElement(this))
 }
 
+@HTMLMaker
 class Body : GeneralBodyTag("body")
+
+@HTMLMaker
 class UL(clas: String? = null) : BodyTag("ul") {
     fun li(clas: String? = null, init: LI.() -> Unit) = initTag(LI(clas), init)
 }
 
+@HTMLMaker
 class B(clas: String? = null) : GeneralBodyTag("b", clas)
+
+@HTMLMaker
 class LI(clas: String? = null) : GeneralBodyTag("li", clas)
+
+@HTMLMaker
 class P(clas: String? = null) : GeneralBodyTag("p", clas)
 
+@HTMLMaker
 class H1(clas: String? = null) : GeneralBodyTag("h1", clas)
+
+@HTMLMaker
 class H2(clas: String? = null) : GeneralBodyTag("h2", clas)
+
+@HTMLMaker
 class H3(clas: String? = null) : GeneralBodyTag("h3", clas)
+
+@HTMLMaker
 class H4(clas: String? = null) : GeneralBodyTag("h4", clas)
+
+@HTMLMaker
 class H5(clas: String? = null) : GeneralBodyTag("h5", clas)
+
+@HTMLMaker
 class H6(clas: String? = null) : GeneralBodyTag("h6", clas)
+
+@HTMLMaker
 class HEADER(clas: String? = null) : GeneralBodyTag("header", clas)
 
+@HTMLMaker
 class DIV(clas: String? = null): GeneralBodyTag("div", clas)
 
+@HTMLMaker
 class A(inHref: String, clas: String? = null) : GeneralBodyTag("a") {
     var href: String
         get() = attributes["href"]!!
@@ -181,8 +225,4 @@ class A(inHref: String, clas: String? = null) : GeneralBodyTag("a") {
     }
 }
 
-fun html(init: HTML.() -> Unit): HTML {
-    val html = HTML()
-    html.init()
-    return html
-}
+fun html(init: HTML.() -> Unit) = HTML(init = init)

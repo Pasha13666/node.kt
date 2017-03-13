@@ -16,10 +16,10 @@ val mimes = hashMapOf(
     "js" to "application/javascript"
 )
 
-fun File.mimeType(): String? {
-  return mimes[this.extension]
+fun File.mimeType(): String {
+  return mimes[this.extension] ?: "application/octet-stream"
 }
 
-fun String.mimeType(): String? {
-  return mimes[this];
+fun String.mimeType(): String {
+  return mimes[this] ?: "application/octet-stream"
 }

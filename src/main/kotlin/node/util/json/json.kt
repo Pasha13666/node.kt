@@ -349,8 +349,35 @@ fun parseJson(reader: Reader): Any? {
     return world.result
 }
 
+private fun renderString(s: String): String {
+    val sb = StringBuilder()
+    sb.append("\"")
+
+    s.forEach {
+        when (it) {
+            '"' -> sb.append("\\").append(it)
+            '\\' -> sb.append(it).append(it)
+            '\n' -> sb.append("\\n")
+            '\r' -> sb.append("\\r")
+            '\t' -> sb.append("\\t")
+            '\b' -> sb.append("\\b")
+            '\u000c' -> sb.append("\\f")
+            else -> {
+                if(it in ('\u007F'..'\u009F') + ('\u0000'..'\u001F') + ('\u2000'..'\u20FF')){
+                    sb.append("\\u")
+                    sb.append(Integer.toHexString(it.toInt()).padStart(4, '0'))
+                } else sb.append(it)
+            }
+        }
+    }
+
+    sb.append("\"")
+    return sb.toString()
+}
+
 fun Any?.toJson(): String = when (this){
     is Int, is Long, is BigInteger, is Float, is Double, is Boolean, null -> this.toString()
+    is String -> renderString(this)
     is Map<*, *> -> "{" + this.map { it.key.toJson() + ":" + it.value.toJson() }.joinToString(",") + "}"
     is List<*> -> "[" + this.map(Any?::toJson).joinToString(",") + "]"
     is Array<*> -> "[" + this.map(Any?::toJson).joinToString(",") + "]"

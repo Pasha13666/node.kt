@@ -54,7 +54,7 @@ fun staticResources(classBasePath: String): RouteHandler.()->Boolean {
 
             val resource = Thread.currentThread().contextClassLoader.getResource(classBasePath + requestPath)
             if (resource != null) {
-                requestPath.mimeType().apply { if (this != null) res.contentType(this) }
+                res.contentType(requestPath.mimeType())
                 resource.openStream().use {
                     res.send(it)
                 }

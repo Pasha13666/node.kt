@@ -50,7 +50,7 @@ class ExpressNetty: Express() {
             val req = Request(this@ExpressNetty, msg!!, ctx!!.channel()!!)
             val res = Response(req, msg, ctx)
             try {
-                handleRequest(req, res, 0)
+                handleRequest(req, res)
             } catch (t: Throwable) {
                 errorHandler(t, req, res)
             }

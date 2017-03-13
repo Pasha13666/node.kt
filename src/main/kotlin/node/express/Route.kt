@@ -12,7 +12,7 @@ import java.net.URLDecoder
 class Route(val method: String, val path: String, val handler: RouteHandler.() -> Boolean) {
   private class Key(val name: String, val optional: Boolean)
 
-  var pattern = Pattern.compile("(/)?(\\.)?:(\\w+)(?:(\\(.*?\\)))?(\\?)?(\\*)?")!!
+  lateinit var pattern: Pattern
   private var keys = ArrayList<Key>()
 
   init {
@@ -26,7 +26,7 @@ class Route(val method: String, val path: String, val handler: RouteHandler.() -
     val p = if (strict) path else "/?"
 
     val sb = StringBuffer()
-    val pattern = Pattern.compile("")
+    val pattern = Pattern.compile("(/)?(\\.)?:(\\w+)(?:(\\(.*?\\)))?(\\?)?(\\*)?")
     val matcher = pattern.matcher(p)
     while (matcher.find()) {
       val slash = matcher.group(1) ?: ""

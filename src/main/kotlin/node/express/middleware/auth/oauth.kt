@@ -43,17 +43,14 @@ class OAuth(val express: Express,
       val redirect = "http://${req.header("Host")}/oauth/callback/${provider.name}"
 //      res.redirect("${provider.tokenUrl}?client_id=${provider.clientId}&redirect_uri=${redirect.encodeUriComponent()}&code=${code}&client_secret=${provider.secret}")
 
-      val request = HttpClient.post(provider.tokenUrl).
-        form("client_id", provider.clientId).
-        form("redirect_uri", redirect).
-        form("client_secret", provider.secret).
-        form("code", code).withErrorHandler({ r ->
-          if (r.contentType() == "text/javascript") {
-            throw IOException(r.text())
-          } else {
-            HttpClient.defaultErrorHandler(r)
-          }
-        })
+      val request = HttpClient.post(provider.tokenUrl).form(
+              "client_id" to provider.clientId,
+              "redirect_uri" to redirect,
+              "client_secret" to provider.secret,
+              "code" to code).withErrorHandler {
+        if (it.contentType() == "text/javascript") throw IOException(it.text())
+        else HttpClient.defaultErrorHandler(it)
+      }
       request.accepts("*/*")
       val response = request.form()
 

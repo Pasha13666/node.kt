@@ -26,9 +26,11 @@ import java.util.*
 class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHandlerContext) : EventEmitter() {
     val response = DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)
     val locals = HashMap<String, Any>()
+    val status: Int
+        get() = response.status!!.code()
 
-    private val end = ChannelFutureListener { future ->
-        ChannelFutureListener.CLOSE.operationComplete(future)
+    private val end = ChannelFutureListener {
+        ChannelFutureListener.CLOSE.operationComplete(it)
         emit("end", this@Response)
     }
 
@@ -41,37 +43,12 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
         write()
     }
 
-    /**
-     * Redirect to the given url. By default, uses a temporary redirect code (302), if
-     * permanent is set to true, a 301 redirect code will be sent.
-     */
-    fun redirect(url: String, permanent: Boolean = false) {
-        this.header("Location", url)
-        status(if (permanent) 301 else 302)
-        write()
-    }
-
-    /**
-     * Set the status code for this response. Does not send the response
-     */
-    fun status(code: Int, msg: String? = null): Response {
-        response.status = if (msg != null) HttpResponseStatus(code, msg)
-        else HttpResponseStatus.valueOf(code)
-        return this
-    }
-
-    val status: Int
-        get() {
-            return response.status!!.code()
-        }
-
     fun send(b: ByteArray) {
         setIfEmpty(HttpHeaders.Names.CONTENT_LENGTH, b.size.toString())
         writeResponse()
 
         channel.write(ChunkedStream(ByteArrayInputStream(b)))!!.addListener(end)
     }
-
 
     /**
      * Get the input stream
@@ -98,9 +75,33 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
         write()
     }
 
+    /**
+     * Redirect to the given url. By default, uses a temporary redirect code (302), if
+     * permanent is set to true, a 301 redirect code will be sent.
+     */
+    fun redirect(url: String, permanent: Boolean = false) {
+        this.header("Location", url)
+        status(if (permanent) 301 else 302)
+        write()
+    }
+
+    /**
+     * Set the status code for this response. Does not send the response
+     */
+    fun status(code: Int, msg: String? = null): Response {
+        response.retain().status = if (msg != null) HttpResponseStatus(code, msg)
+        else HttpResponseStatus.valueOf(code)
+        return this
+    }
+
     fun html(html: HTML) {
         contentType("text/html; charset=UTF-8")
         send(html.toString())
+    }
+
+    fun html(html: HTML.() -> Unit) {
+        contentType("text/html; charset=UTF-8")
+        send(HTML(init = html).toString())
     }
 
     fun contentType(t: String) {
@@ -167,7 +168,7 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
 
     private fun setResponseText(text: String) {
         val bytes = text.toByteArray(CharsetUtil.UTF_8)
-        response.content().writeBytes(bytes)
+        response.content().retain().writeBytes(bytes)
         response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, bytes.size)
     }
 
@@ -207,7 +208,7 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
         setIfEmpty(HttpHeaders.Names.DATE, Date().asHttpFormatString())
         setIfEmpty(HttpHeaders.Names.LAST_MODIFIED, Date(file.lastModified()).asHttpFormatString())
 
-        setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, file.mimeType() ?: "application/octet-stream")
+        setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, file.mimeType())
 
         writeResponse()
 

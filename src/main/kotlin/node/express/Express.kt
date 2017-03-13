@@ -27,7 +27,7 @@ var defaultErrorHandler :((Throwable, Request, Response) -> Unit) = { t, req, re
   }
 }
 
-class RouteHandler(val req: Request, val res: Response)
+data class RouteHandler(val req: Request, val res: Response)
 
 /**
  * Express.kt
@@ -55,16 +55,14 @@ abstract class Express {
   /**
    * Assign a setting value. Settings are available in templates as 'settings'
    */
-  fun set(name: String, value: Any) {
-    settings.put(name, value)
+  operator fun set(name: String, value: Any) {
+    settings[name] = value
   }
 
   /**
    * Get the value of a setting
    */
-  fun get(name: String): Any? {
-    return settings[name]
-  }
+  operator fun get(name: String): Any? = settings[name]
 
   /**
    * Register a rendering engine with an extension. Once registered, setting the 'view engine' setting
@@ -143,88 +141,60 @@ abstract class Express {
     return renderer.render(viewPath, mergedContext)
   }
 
-  fun install(method: String, path: String, vararg handler: RouteHandler.() -> Boolean) {
-    handler.forEach {
-      routes.add(Route(method, path, it))
-    }
-  }
-
-  private fun installAll(path: String, vararg handler: RouteHandler.() -> Boolean) {
-    install("get", path, *handler)
-    install("put", path, *handler)
-    install("post", path, *handler)
-    install("delete", path, *handler)
-    install("head", path, *handler)
-    install("patch", path, *handler)
+  fun install(method: String, path: String, handler: RouteHandler.() -> Boolean) {
+    routes.add(Route(method, path, handler))
   }
 
   /**
    * Install a middleware Handler object to be used for all requests.
    */
-  fun use(middleware: RouteHandler.() -> Boolean) {
-    install("*", "*", middleware)
-  }
+  fun use(middleware: RouteHandler.() -> Boolean) = install("*", "*", middleware)
 
   /**
    * Install middleware for a given path expression
    */
-  fun use(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("*", path, *middleware)
-  }
+  fun use(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
 
   /**
    * Install a handler for a path for all HTTP methods.
    */
-  fun all(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("*", path, *middleware)
-  }
+  fun all(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
 
   /**
    * Install a GET handler callback for a path
    */
-  fun get(path: String, middleware: RouteHandler.() -> Boolean) {
-    install("get", path, middleware)
-  }
+  fun get(path: String, middleware: RouteHandler.() -> Boolean) = install("get", path, middleware)
 
   /**
    * Install a POST handler callback for a path
    */
-  fun post(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("post", path, *middleware)
-  }
+  fun post(path: String, middleware: RouteHandler.() -> Boolean) = install("post", path, middleware)
 
   /**
    * Install a PATCH handler callback for a path
    */
-  fun patch(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("patch", path, *middleware)
-  }
+  fun patch(path: String, middleware: RouteHandler.() -> Boolean) = install("patch", path, middleware)
 
   /**
    * Install a PUT handler callback for a path
    */
-  fun put(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("put", path, *middleware)
-  }
+  fun put(path: String, middleware: RouteHandler.() -> Boolean)  = install("put", path, middleware)
 
   /**
    * Install a DELETE handler callback for a path
    */
-  fun delete(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("delete", path, *middleware)
-  }
+  fun delete(path: String, middleware: RouteHandler.() -> Boolean) = install("delete", path, middleware)
 
   /**
    * Install a HEAD handler callback for a path
    */
-  fun head(path: String, vararg middleware: RouteHandler.() -> Boolean) {
-    install("head", path, *middleware)
-  }
+  fun head(path: String, middleware: RouteHandler.() -> Boolean) = install("head", path, middleware)
 
-  fun handleRequest(req: Request, res: Response, stackIndex: Int = 0) {
+  fun handleRequest(req: Request, res: Response) {
       val rh = RouteHandler(req, res)
-      for (i in routes.stream().skip(stackIndex.toLong()).filter { req.checkRoute(it, res) })
-          if (i.handler.invoke(rh)) return
+      for (i in routes)
+          if (req.checkRoute(i, res) && i.handler.invoke(rh))
+              return
       res.sendErrorResponse(404)
   }
 

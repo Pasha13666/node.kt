@@ -1,7 +1,8 @@
 package node.examples
 
 import node.express.html.Body
-import node.express.html.html
+import node.express.middleware.logger
+import node.express.middleware.static
 import node.express.servers.ExpressNetty
 
 fun Body.cetHeader() {
@@ -17,9 +18,10 @@ fun Body.cetHeader() {
 }
 
 fun main(args: Array<String>) {
-    val express = ExpressNetty()
-    express.get("/test"){
-        res.html(html {
+    val app = ExpressNetty()
+    app.use(logger())
+    app.get("/"){
+        res.html {
             head {
                 base("https://www.caesars.com")
                 css("//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css")
@@ -30,8 +32,19 @@ fun main(args: Array<String>) {
             body {
                 cetHeader()
             }
-        })
+        }
         true
     }
-    express.listen(3100)
+
+    app.get("/static/*", static("./"))
+    app.get("/api/:name/:value"){
+        res.status(200)
+        res.json(mapOf(
+                "name" to req.param("name"),
+                "value" to req.param("value")
+        ))
+        true
+    }
+
+    app.listen(3100)
 }

@@ -8,198 +8,173 @@ import java.io.Writer
 import java.util.*
 
 /**
- * 
+ *
  */
 class KtTemplate(w: Writer) {
-  val escapedQuote = "\"\"\""
-  val writer = PrintWriter(w)
-  val stack = Stack<State>()
+    val escapedQuote = "\"\"\""
+    val writer = PrintWriter(w)
+    val stack = Stack<State>()
 
-  interface State {
-    fun process(c: Char): Boolean
-    fun end() {
+    interface State {
+        fun process(c: Char): Boolean
+        fun end() {
 
-    }
-  }
-
-  inner class Header(val writer: Appendable): State {
-    init {
-      writer.append("import java.io.StringWriter\n")
-    }
-
-    val builder = StringBuilder()
-
-    override fun process(c: Char): Boolean {
-      if (c == '{') {
-        builder.append(c)
-        writer.append(builder.toString().replace("template ", "fun "))
-        writer.append('\n')
-        writer.append("val out = StringWriter();\n")
-        stack.push(Function(writer))
-        return true
-      } else {
-        builder.append(c)
-        return true
-      }
-    }
-
-    override fun end() {
-      writer.append(builder)
-    }
-  }
-
-  inner class Function(val writer: Appendable): State {
-    var buffer = StringBuilder()
-    override fun process(c: Char): Boolean {
-      when (c) {
-        '}' -> {
-          writer.append("return out.toString();\n")
-          writer.append(c)
-          writer.append("\n")
-          stack.pop()
         }
-        '$' -> {
-          stack.push(CodeStart(writer))
-        }
-        ' ' -> {
-          buffer.append(c)
-        }
-        '\t' -> {
-          buffer.append(c)
-        }
-        '\n' -> {
-          // ignore
-        }
-        else -> {
-          val o = Output(writer)
-          buffer.append(c)
-          buffer.toString().forEach { o.process(it) }
-          buffer = StringBuilder()
-          stack.push(o)
-        }
-      }
-      return true
     }
 
-    override fun end() {
-      writer.append("\n")
-    }
-  }
-
-  inner class Output(val writer: Appendable): State {
-    init {
-      writer.append("out.write($escapedQuote")
-    }
-
-    override fun process(c: Char): Boolean {
-      when (c) {
-        '$' -> {
-          writer.append("$escapedQuote)\n")
-          stack.pop()
-          return false
+    inner class Header(val writer: Appendable) : State {
+        init {
+            writer.append("import java.io.StringWriter\n")
         }
-        '\n' -> {
-          writer.append("\n$escapedQuote)\n")
-          stack.pop()
+
+        val builder = StringBuilder()
+
+        override fun process(c: Char): Boolean {
+            if (c == '{') {
+                writer.append(builder.toString().replace("template ", "fun "))
+                writer.append(":String{\nval out = StringWriter();\n")
+                stack.push(Function(writer))
+            } else builder.append(c)
+            return true
         }
-        else -> {
-          writer.append(c)
+
+        override fun end() {
+            writer.append(builder)
         }
-      }
-      return true
     }
 
-    override fun end() {
-      writer.append("\n$escapedQuote)\n")
-    }
-  }
-
-  inner class CodeStart(val writer: Appendable): State {
-    override fun process(c: Char): Boolean {
-      if (c == '{') {
-        stack.pop() // pop myself
-        stack.push(BlockCode(writer))
-      } else {
-        stack.pop() // pop myself
-        val inliner = InlineCode(writer)
-        inliner.process(c)
-        stack.push(inliner)
-      }
-      return true
-    }
-  }
-
-  inner class InlineCode(val writer: Appendable): State {
-    private var isStart = true
-
-    override fun end() {
-      writer.append("}())\n")
-    }
-
-    override fun process(c: Char): Boolean {
-      if (isStart) {
-        if (c.isJavaIdentifierStart()) {
-          writer.append("out.write({")
-          writer.append(c)
-          isStart = false
-        } else {
-          end()
-          stack.pop()
-          return false
+    inner class Function(val writer: Appendable) : State {
+        var buffer = StringBuilder()
+        override fun process(c: Char): Boolean {
+            when (c) {
+                '}' -> {
+                    writer.append("return out.toString();\n")
+                    writer.append(c)
+                    writer.append("\n")
+                    stack.pop()
+                }
+                '$' -> stack.push(CodeStart(writer))
+                ' ', '\t' -> buffer.append(c)
+                '\n' -> {
+                }
+                else -> {
+                    val o = Output(writer)
+                    buffer.append(c)
+                    buffer.toString().forEach { o.process(it) }
+                    buffer = StringBuilder()
+                    stack.push(o)
+                }
+            }
+            return true
         }
-      } else {
-        if (c.isJavaIdentifierPart()) {
-          writer.append(c)
-        } else {
-          end()
-          stack.pop()
-          return false
-        }
-      }
-      return true
-    }
-  }
 
-  inner class BlockCode(val writer: Appendable): State {
-    init {
-      writer.append("out.write({")
+        override fun end() {
+            writer.append("\n")
+        }
     }
 
-    override fun process(c: Char): Boolean {
-      when (c) {
-        '}' -> {
-          writer.append("}())\n")
-          stack.pop()
+    inner class Output(val writer: Appendable) : State {
+        init {
+            writer.append("out.write($escapedQuote")
         }
-        else -> {
-          writer.append(c)
-        }
-      }
-      return true
-    }
-  }
 
-  fun process(text: String) {
-    stack.push(Header(writer))
-    val writer = StringWriter()
-    for (c in text) {
-      do {
-        val top = stack.peek()
-      } while (!(top!!.process(c)))
+        override fun process(c: Char): Boolean {
+            when (c) {
+                '$' -> {
+                    writer.append("$escapedQuote)\n")
+                    stack.pop()
+                    return false
+                }
+                '\n' -> {
+                    writer.append("\n$escapedQuote)\n")
+                    stack.pop()
+                }
+                else -> {
+                    writer.append(c)
+                }
+            }
+            return true
+        }
+
+        override fun end() {
+            writer.append("\n$escapedQuote)\n")
+        }
     }
-    this.writer.println(writer.toString())
-  }
+
+    inner class CodeStart(val writer: Appendable) : State {
+        override fun process(c: Char): Boolean {
+            stack.pop() // pop myself
+            stack.push(if (c == '{') BlockCode(writer) else InlineCode(writer).apply { process(c) })
+            return true
+        }
+    }
+
+    inner class InlineCode(val writer: Appendable) : State {
+        private var isStart = true
+
+        override fun end() {
+            writer.append("}())\n")
+        }
+
+        override fun process(c: Char): Boolean {
+            if (isStart) {
+                if (c.isJavaIdentifierStart()) {
+                    writer.append("out.write({")
+                    writer.append(c)
+                    isStart = false
+                } else {
+                    end()
+                    stack.pop()
+                    return false
+                }
+            } else {
+                if (c.isJavaIdentifierPart()) {
+                    writer.append(c)
+                } else {
+                    end()
+                    stack.pop()
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
+    inner class BlockCode(val writer: Appendable) : State {
+        init {
+            writer.append("out.write({")
+        }
+
+        override fun process(c: Char): Boolean {
+            if (c == '}') {
+                writer.append("}())\n")
+                stack.pop()
+            } else writer.append(c)
+            return true
+        }
+    }
+
+    fun process(text: String) {
+        stack.push(Header(writer))
+        val writer = StringWriter()
+        for (c in text) {
+            do {
+                val top = stack.peek()
+            } while (!(top!!.process(c)))
+        }
+        this.writer.println(writer.toString())
+    }
 }
 
 fun processFile(file: File) {
-  val writer = StringWriter()
-  val outFile = File(file.parent, "${file.name.until(".")}.kt")
+    val writer = StringWriter()
+    val outFile = File(file.parent, "${file.name.until(".")}.kt")
 
-  val tmpl = KtTemplate(writer)
-  tmpl.process(file.readText())
-  outFile.writeText(writer.buffer.toString())
+    val tmpl = KtTemplate(writer)
+    tmpl.process(file.readText())
+    outFile.writeText(writer.buffer.toString())
 }
 
 fun main(args: Array<String>) {
-  processFile(java.io.File(args[0]))
+    processFile(java.io.File(args[0]))
 }

@@ -9,27 +9,17 @@ import javax.mail.internet.InternetAddress
 import javax.mail.internet.MimeMessage
 
 private val session by lazy {
-  val properties = Properties()
+    val properties = Properties()
 
-  // load generic properties
-  Configuration.get("mail.properties").also {
-    if (it is Map<*,*>) {
-      it.forEach {
-        if (it.key is String && it.value is String) {
-          properties.setProperty(it.key as String, it.value as String)
-        }
-      }
-    }
-  }
+    // load generic properties
+    (Configuration.get("mail.properties") as? Map<*, *>)?.filter { it.key is String && it.value is String }
+            ?.forEach { properties.setProperty(it.key as String, it.value as String) }
 
-  // load address mappings
-  val session = Session.getDefaultInstance(properties)!!
-  Configuration.map("mail.protocols").forEach {
-    if (it.value is String) {
-      session.setProtocolForAddress(it.key, it.value as String)
-    }
-  }
-  session
+    // load address mappings
+    val session = Session.getDefaultInstance(properties)!!
+    Configuration.map("mail.protocols").filter { it.value is String }
+            .forEach { session.setProtocolForAddress(it.key, it.value as String) }
+    session
 }
 
 /**

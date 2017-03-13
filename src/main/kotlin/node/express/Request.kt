@@ -17,9 +17,7 @@ class Request(val app: Express, val request: FullHttpRequest, val channel: Chann
   var startTime = System.currentTimeMillis()
   var qsd = QueryStringDecoder(request.uri!!)
   val attributes: MutableMap<String, Any> = HashMap()
-  val uri: String
-    get() = request.uri!!
-
+  val uri: String = request.uri!!
   var method: String = request.method!!.name()!!.toLowerCase()
 
   val path: String
@@ -76,32 +74,21 @@ class Request(val app: Express, val request: FullHttpRequest, val channel: Chann
   /**
    * Check if this request is of a certain content type
    */
-  fun isType(contentType: String): Boolean {
-    val t = header(HttpHeaders.Names.CONTENT_TYPE)
-    return t == contentType
-  }
+  fun isType(contentType: String) = header(HttpHeaders.Names.CONTENT_TYPE) == contentType
 
   /**
    * Get the remote ip address of the request
    */
-  fun ip(): String {
-    return channel.remoteAddress().toString()
-  }
+  fun ip() = channel.remoteAddress().toString()
 
   class Accept(val mainType: String, val subType: String, val quality: Double) {
     /**
      * Match a given mime type
      */
     fun match(t: String): Boolean {
-      val mime: String ?
-      if (t.indexOf("/") == -1)
-          mime = t.mimeType()
-      else mime = t
-      if (mime == null)
-          return false
+      val mime = if ('/' in t) t else t.mimeType()
       val parts = mime.split("/".toRegex()).toTypedArray()
-      return (parts[0] == mainType || mainType == "*") &&
-      (parts[1] == subType || subType == "*")
+      return (parts[0] == mainType || mainType == "*") && (parts[1] == subType || subType == "*")
     }
   }
 
@@ -121,15 +108,10 @@ class Request(val app: Express, val request: FullHttpRequest, val channel: Chann
         }
       }
       result
-    }.sortedWith(object : Comparator<Accept> {
-      override fun compare(o1: Request.Accept, o2: Request.Accept): Int {
-        if (o1.quality - o2.quality > 0) return -1
-        else if (o1.quality == o2.quality) return 0
-        else return 1
-      }
-      override fun equals(other: Any?): Boolean {
-        throw UnsupportedOperationException()
-      }
+    }.sortedWith(Comparator<Accept> { o1, o2 ->
+      if (o1.quality - o2.quality > 0) -1
+      else if (o1.quality == o2.quality) 0
+      else 1
     })
   }
 
@@ -160,9 +142,7 @@ class Request(val app: Express, val request: FullHttpRequest, val channel: Chann
   val body: Body?
     get() = attributes["body"] as? Body
 
-  fun body(key: String): Any? {
-    return body?.get(key)
-  }
+  fun body(key: String) = body?.get(key)
 
   /**
    * Look up the value of a parameter, first by checking path parameters, then the contents of the body,
