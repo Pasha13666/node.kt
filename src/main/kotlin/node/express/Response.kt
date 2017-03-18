@@ -1,64 +1,86 @@
 package node.express
 
-import io.netty.channel.ChannelFuture
-import io.netty.channel.ChannelFutureListener
-import io.netty.channel.ChannelHandlerContext
-import io.netty.handler.codec.http.*
-import io.netty.handler.stream.ChunkedFile
-import io.netty.handler.stream.ChunkedStream
-import io.netty.util.CharsetUtil
 import node.EventEmitter
 import node.express.html.HTML
-import node.http.asHttpDate
-import node.http.asHttpFormatString
 import node.mimeType
-import node.util.io.pipe
-import node.util.json.toJson
-import java.io.ByteArrayInputStream
+import node.util.asHttpDate
+import node.util.asHttpFormatString
+import node.util.extension
+import node.json.*
 import java.io.File
-import java.io.InputStream
+import java.io.OutputStream
 import java.text.ParseException
 import java.util.*
 
 /**
  * Represents the response to an HTTP request
  */
-class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHandlerContext) : EventEmitter() {
-    val response = DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)
+abstract class Response(val req: Request) : EventEmitter() {
     val locals = HashMap<String, Any>()
-    val status: Int
-        get() = response.status!!.code()
+    val headers = mutableMapOf<String, String>()
+    var status: Int = 200
+    private var headSent = false
+    private var rawOut: OutputStream? = null
 
-    private val end = ChannelFutureListener {
-        ChannelFutureListener.CLOSE.operationComplete(it)
-        emit("end", this@Response)
+    private fun rawOutput(): OutputStream {
+        if (rawOut == null){
+            synchronized(this){
+                if (rawOut == null)
+                    rawOut = getRawOutput()
+            }
+        }
+        return rawOut!!
     }
 
-    /**
-     * Send a response code and an optional message. If message is not passed, a default message will be included if
-     * it is available
-     */
-    fun send(code: Int, msg: String? = null) {
-        status(code, msg)
-        write()
+    protected abstract fun sendHead()
+    protected abstract fun getRawOutput(): OutputStream
+
+    fun end(): Boolean {
+        if (!headSent){
+            setIfEmpty("Date", Date().asHttpFormatString())
+            emit("header", this)
+            sendHead()
+            headSent = true
+        }
+
+        emit("end", this@Response)
+        return true
+    }
+
+    fun raw(): OutputStream {
+        if(!headSent) {
+            setIfEmpty("Date", Date().asHttpFormatString())
+            emit("header", this)
+            sendHead()
+            headSent = true
+        }
+
+        if (rawOut == null)
+            rawOut = getRawOutput()
+
+        return rawOutput()
     }
 
     fun send(b: ByteArray) {
-        setIfEmpty(HttpHeaders.Names.CONTENT_LENGTH, b.size.toString())
-        writeResponse()
+        if (!headSent) {
+            setIfEmpty("Content-Length", b.size.toString())
+            emit("header", this)
+            sendHead()
+            headSent = true
+        }
 
-        channel.write(ChunkedStream(ByteArrayInputStream(b)))!!.addListener(end)
+        rawOutput().write(b)
     }
 
-    /**
-     * Get the input stream
-     */
-    fun send(input: InputStream) {
-        val content = response.content()
-        input.pipe { bytes, i ->
-            content.writeBytes(bytes, 0, i)
-        }
-        write()
+    fun sendOnly(b: ByteArray): Boolean{
+        setIfEmpty("Content-Length", b.size.toString())
+        raw().write(b)
+        return end()
+    }
+
+    fun sendOnly(b: String): Boolean {
+        setIfEmpty("Content-Type", "text/plain; charset=UTF-8")
+        return sendOnly(b.toByteArray(Charsets.UTF_8))
     }
 
     /**
@@ -66,46 +88,32 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
      * be set to text/plain
      */
     fun send(str: String) {
-        response.content().writeBytes(str.toByteArray(CharsetUtil.UTF_8))
-
-        setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, "text/plain; charset=UTF-8")
-        response.headers().set(HttpHeaders.Names.CONTENT_LENGTH,
-                response.content().readableBytes())
-
-        write()
+        setIfEmpty("Content-Type", "text/plain; charset=UTF-8")
+        send(str.toByteArray(Charsets.UTF_8))
     }
 
     /**
      * Redirect to the given url. By default, uses a temporary redirect code (302), if
      * permanent is set to true, a 301 redirect code will be sent.
      */
-    fun redirect(url: String, permanent: Boolean = false) {
-        this.header("Location", url)
-        status(if (permanent) 301 else 302)
-        write()
+    fun redirect(url: String, permanent: Boolean = false): Boolean {
+        headers["Location"] = url
+        status = if (permanent) 301 else 302
+        return end()
     }
 
-    /**
-     * Set the status code for this response. Does not send the response
-     */
-    fun status(code: Int, msg: String? = null): Response {
-        response.retain().status = if (msg != null) HttpResponseStatus(code, msg)
-        else HttpResponseStatus.valueOf(code)
-        return this
-    }
-
-    fun html(html: HTML) {
+    fun html(html: HTML): Boolean {
         contentType("text/html; charset=UTF-8")
-        send(html.toString())
+        return sendOnly(html.toString())
     }
 
-    fun html(html: HTML.() -> Unit) {
+    fun html(html: HTML.() -> Unit): Boolean {
         contentType("text/html; charset=UTF-8")
-        send(HTML(init = html).toString())
+        return sendOnly(HTML(init = html).toString())
     }
 
     fun contentType(t: String) {
-        header(HttpHeaders.Names.CONTENT_TYPE, t)
+        headers["Content-Type"] = t
     }
 
     /**
@@ -119,111 +127,113 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
      * Add a new cookie
      */
     fun cookie(cookie: Cookie) {
-        response.headers().add("Set-Cookie", cookie.toString())
+        headers["Set-Cookie"] = cookie.toString()
     }
 
-
-    fun header(key: String): String? {
-        return response.headers().get(key)
+    operator fun get(key: String): String? {
+        return headers[key]
     }
 
-    fun get(key: String): String? {
-        return header(key)
-    }
-
-    fun header(key: String, value: String): Response {
-        response.headers().set(key, value)
-        return this
-    }
-
-    fun set(key: String, value: String): Response {
-        return header(key, value)
+    operator fun set(key: String, value: String) {
+        headers[key] = value
     }
 
     /**
      * Send JSON. Similar to send(), but the parameter can be any object,
      * which will be attempted to be converted to JSON.
      */
-    fun json(j: Any?) {
-        json(j.toJson())
-    }
+    fun json(j: Any?) = json(j.toJson())
 
     /**
      * Send a JSON response.
      */
-    fun json(j: String) {
+    fun json(j: String): Boolean {
         var callbackName: String? = null
         if (req.app.enabled("jsonp callback")) {
-            callbackName = req.query.get(req.app.get("jsonp callback name") as String)
+            callbackName = req.query[req.app["jsonp callback name"] as String]
         }
-        if (callbackName != null) {
-            setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, "application/javascript")
-            setResponseText("$callbackName($j)")
+        return if (callbackName != null) {
+            setIfEmpty("Content-Type", "application/javascript")
+            sendOnly("$callbackName($j)")
         } else {
-            setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, "application/json")
-            setResponseText(j)
+            setIfEmpty("Content-Type", "application/json")
+            sendOnly(j)
         }
-        write()
-    }
-
-    private fun setResponseText(text: String) {
-        val bytes = text.toByteArray(CharsetUtil.UTF_8)
-        response.content().retain().writeBytes(bytes)
-        response.headers().set(HttpHeaders.Names.CONTENT_LENGTH, bytes.size)
-    }
-
-    private fun write() {
-        response.headers().set(HttpHeaders.Names.DATE, Date().asHttpFormatString())
-        writeResponse().addListener(end)
-    }
-
-    private fun writeResponse(): ChannelFuture {
-        emit("header", this)
-        return channel.writeAndFlush(response)!!
     }
 
     private fun setIfEmpty(key: String, value: Any) {
-        if (response.headers().get(key) == null) {
-            response.headers().set(key, value.toString())
-        }
+        if (key !in headers)
+            headers[key] = value.toString()
     }
 
+    /**
+     * Send file contents.
+     * WARNING: calls [end]\()!
+     */
     fun sendFile(file: File) {
-        if (!file.exists()) return send(404)
+        if (!file.exists()){
+            status = 404
+            end()
+            return
+        }
 
         val size = file.length()
-        val ifModifiedString = req.header(HttpHeaders.Names.IF_MODIFIED_SINCE)
+        val ifModifiedString = req.header("If-Modified-Since")
         if (ifModifiedString != null) {
             try {
                 val ifModifiedDate = ifModifiedString.asHttpDate()
                 if (ifModifiedDate.time >= file.lastModified()) {
-                    return send(304)
+                    status = 304
+                    end()
+                    return
                 }
             } catch (e: ParseException) {
                 // ignore
             }
         }
 
-        setIfEmpty(HttpHeaders.Names.CONTENT_LENGTH, size)
-        setIfEmpty(HttpHeaders.Names.DATE, Date().asHttpFormatString())
-        setIfEmpty(HttpHeaders.Names.LAST_MODIFIED, Date(file.lastModified()).asHttpFormatString())
+        setIfEmpty("Content-Length", size)
+        setIfEmpty("Date", Date().asHttpFormatString())
+        setIfEmpty("Last-Modified", Date(file.lastModified()).asHttpFormatString())
 
-        setIfEmpty(HttpHeaders.Names.CONTENT_TYPE, file.mimeType())
+        setIfEmpty("Content-Type", file.mimeType())
+        emit("header", this)
 
-        writeResponse()
-
-        channel.write(ChunkedFile(file)).addListener(end)
+        file.inputStream().copyTo(raw())
+        end()
     }
 
-    fun render(view: String, data: Map<String, Any?>? = null) {
+    fun render(name: String, data: Map<String, Any?>? = null, render: Boolean = false) {
         this.locals.put("request", req)
         val mergedContext = HashMap<String, Any?>(locals).apply {
             if (data != null) putAll(data)
+            putAll(req.app.locals)
         }
-        send(req.app.render(view, mergedContext))
+        var ext = name.extension()
+        var viewFileName = name
+        if (ext == null) {
+            ext = req.app["view engine"] as? String ?: throw IllegalArgumentException("No default view set for view without extension")
+            viewFileName = name + "." + ext
+        }
+
+        val renderer = req.app.engines[ext] ?: throw IllegalArgumentException("No renderer for ext: " + ext)
+        val viewsPath = req.app["views"] as String
+        val viewFile = File(viewsPath + viewFileName)
+        if (!viewFile.exists()) {
+            if (!render)
+                return sendErrorResponse(404)
+            end()
+        }
+        val viewPath = viewFile.absolutePath
+
+        renderer.render(viewPath, mergedContext, raw().bufferedWriter(Charsets.UTF_8))
+        end()
     }
 
-    fun ok() = send(200)
+    fun ok(){
+        status = 200
+        end()
+    }
 
     fun internalServerError() = sendErrorResponse(500)
 
@@ -244,14 +254,13 @@ class Response(val req: Request, val e: FullHttpRequest, val channel: ChannelHan
      * as the code, then looks for a static page, then finally just detauls to an empty page
      */
     fun sendErrorResponse(code: Int) {
+        status = code
         if (req.accepts("html")) {
             try {
-                render("errors/$code")
+                render("errors/$code", render = true)
             } catch(e: Throwable) {
-                send(code)
             }
-        } else {
-            send(code)
         }
+        end()
     }
 }

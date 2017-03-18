@@ -1,11 +1,8 @@
 package node.express
 
+import node.Configuration
 import node.NotFoundException
-import node.express.engines.FreemarkerEngine
-import node.express.engines.VelocityEngine
-import node.util.extension
 import node.util.log
-import java.io.File
 import java.io.FileNotFoundException
 import java.util.*
 import java.util.logging.Level
@@ -13,18 +10,38 @@ import java.util.logging.Level
 
 // The default error handler. Can be overridden by setting the errorHandler property of the
 // Express instance
-var defaultErrorHandler :((Throwable, Request, Response) -> Unit) = { t, req, res ->
-  log(Level.WARNING, "Error thrown handling request: " + req.path, t)
-  when (t) {
-    is ExpressException -> res.send(t.code, t.message)
-    is NotFoundException -> res.notFound()
-    is FileNotFoundException -> res.notFound()
-    is IllegalArgumentException -> res.badRequest()
-    is IllegalAccessException -> res.forbidden()
-    is IllegalAccessError -> res.forbidden()
-    is UnsupportedOperationException -> res.notImplemented()
-    else -> res.internalServerError()
-  }
+var defaultErrorHandler: ((Throwable, Request, Response) -> Unit) = { t, req, res ->
+    log(Level.WARNING, "Error thrown handling request: " + req.path, t)
+    when (t) {
+        is ExpressException -> {
+            res.status = t.code
+            res.sendOnly(t.message ?: "")
+        }
+        is NotFoundException -> res.notFound()
+        is FileNotFoundException -> res.notFound()
+        is IllegalArgumentException -> res.badRequest()
+        is IllegalAccessException -> res.forbidden()
+        is IllegalAccessError -> res.forbidden()
+        is UnsupportedOperationException -> res.notImplemented()
+        else -> res.internalServerError()
+    }
+}
+
+enum class HttpVersion(val v_name: String) {
+    HTTP_09("HTTP/0.9"),
+    HTTP_10("HTTP/1.0"),
+    HTTP_11("HTTP/1.1"),
+    HTTP_20("HTTP/2"),
+    ;
+    companion object {
+        operator fun get(name: String?): HttpVersion {
+            if (name == null) return HTTP_09
+            val aName = name.toUpperCase()
+            return values().firstOrNull { it.v_name == aName } ?: HTTP_09
+        }
+    }
+
+    override fun toString() = v_name
 }
 
 data class RouteHandler(val req: Request, val res: Response)
@@ -33,170 +50,132 @@ data class RouteHandler(val req: Request, val res: Response)
  * Express.kt
  */
 abstract class Express {
-  private val settings = HashMap<String, Any>()
-  val locals:MutableMap<String, Any> = HashMap()
-  private val routes = ArrayList<Route>()
-  private val engines = HashMap<String, Engine>()
+    private val settings = HashMap<String, Any>()
+    private val routes = ArrayList<Route>()
+    val engines = HashMap<String, Engine>()
+    val locals: MutableMap<String, Any> = HashMap()
+    val params = HashMap<String, (Request, Response, Any) -> Any?>()
+    var errorHandler: ((Throwable, Request, Response) -> Unit) = defaultErrorHandler
 
-  val params = HashMap<String, (Request, Response, Any) -> Any?>()
+    init {
+        settings.put("views", "views/")
+        settings.put("jsonp callback name", "callback")
+        settings.putAll(Configuration.map("server"))
 
-  var errorHandler: ((Throwable, Request, Response) -> Unit) = defaultErrorHandler
-
-  init {
-    settings.put("views", "views/")
-    settings.put("jsonp callback name", "callback")
-
-    locals.put("settings", settings)
-
-    engines.put("vm", VelocityEngine())
-    engines.put("ftl", FreemarkerEngine())
-  }
-
-  /**
-   * Assign a setting value. Settings are available in templates as 'settings'
-   */
-  operator fun set(name: String, value: Any) {
-    settings[name] = value
-  }
-
-  /**
-   * Get the value of a setting
-   */
-  operator fun get(name: String): Any? = settings[name]
-
-  /**
-   * Register a rendering engine with an extension. Once registered, setting the 'view engine' setting
-   * to a registered extension will set the default view engine. Then, when calling 'render', if no
-   * file extension is part of the name, the default extension will be appended and the appropriate
-   * rendering engine will be used.
-   * @param ext the file extension to register (ie. vm, flt, etc.)
-   * @param engine a rendering engine that implements the Engine trait
-   */
-  fun engine(ext: String, engine: Engine) {
-    engines.put(ext, engine)
-  }
-
-  /**
-   * Set a feature setting to 'true'. Identical to [[Express.set(feature, true)]].
-   */
-  fun enable(feature: String) {
-    settings.put(feature, true)
-  }
-
-  /**
-   * Set a feature setting to 'false'. Identical to [[Express.set(feature, false)]].
-   */
-  fun disable(feature: String) {
-    settings.put(feature, false)
-  }
-
-  /**
-   * Check if a setting is enabled. If the setting doesn't exist, returns false.
-   */
-  fun enabled(feature: String): Boolean {
-    return settings[feature] as? Boolean ?: false
-  }
-
-  /**
-   * Map logic to route parameters. When a provided parameter is present,
-   * calls the builder function to assign the value. So, for example, the :user
-   * parameter can be mapped to a function that creates a user object.
-   */
-  fun param(name: String, builder: (Request, Response, Any) -> Any?) {
-    params.put(name, builder)
-  }
-
-    fun render(name: String, vararg ent: Pair<String, Any?>) = render(name, mapOf(*ent))
-
-  /**
-   * Render a view, returning the resulting string.
-   * @param name the name of the view. If the extension is left off, the value of 'view engine' will
-   * be used as the extension.
-   * @param data data that will be passed to the rendering engine to be used in the rendering of the
-   * view. This data will be merged with 'locals', allowing you to set global data to be used in
-   * all rendering operations.
-   */
-  fun render(name: String, data: Map<String, Any?>? = null): String {
-    var ext = name.extension()
-    var viewFileName = name
-    if (ext == null) {
-      ext = settings["view engine"] as? String ?: throw IllegalArgumentException("No default view set for view without extension")
-      viewFileName = name + "." + ext
+        locals.put("settings", settings)
     }
 
-    val renderer = engines[ext] ?: throw IllegalArgumentException("No renderer for ext: " + ext)
+    fun start(){
+        val port = Configuration["server.port"] as? Int ?: 80
+        if (Configuration["ssl.enable"] as? Boolean ?: false)
+            listenSSL(port, Configuration["ssl.port"] as? Int ?: 446)
+        else listen(port)
+    }
 
-    val mergedContext = HashMap<String, Any?>()
-    mergedContext.putAll(locals)
-    if (data != null)
-      mergedContext.putAll(data)
+    abstract fun stop()
+    protected abstract fun listen(port: Int)
+    protected open fun listenSSL(port: Int, sslPort: Int){
+        log(Level.WARNING, "Cant start https server -- starting http.")
+        listen(port)
+    }
 
-    val viewsPath = settings["views"] as String
+    /**
+     * Assign a setting value. Settings are available in templates as 'settings'
+     */
+    operator fun set(name: String, value: Any) {
+        settings[name] = value
+    }
 
-    val viewFile = File(viewsPath + viewFileName)
-    if (!viewFile.exists())
-      throw FileNotFoundException()
-    val viewPath = viewFile.absolutePath
+    /**
+     * Get the value of a setting
+     */
+    operator fun get(name: String): Any? = settings[name]
 
-    return renderer.render(viewPath, mergedContext)
-  }
+    /**
+     * Set a feature setting to 'true'. Identical to [[Express.set(feature, true)]].
+     */
+    fun enable(feature: String) {
+        settings.put(feature, true)
+    }
 
-  fun install(method: String, path: String, handler: RouteHandler.() -> Boolean) {
-    routes.add(Route(method, path, handler))
-  }
+    /**
+     * Set a feature setting to 'false'. Identical to [[Express.set(feature, false)]].
+     */
+    fun disable(feature: String) {
+        settings.put(feature, false)
+    }
 
-  /**
-   * Install a middleware Handler object to be used for all requests.
-   */
-  fun use(middleware: RouteHandler.() -> Boolean) = install("*", "*", middleware)
+    /**
+     * Check if a setting is enabled. If the setting doesn't exist, returns false.
+     */
+    fun enabled(feature: String): Boolean {
+        return settings[feature] as? Boolean ?: false
+    }
 
-  /**
-   * Install middleware for a given path expression
-   */
-  fun use(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
+    /**
+     * Map logic to route parameters. When a provided parameter is present,
+     * calls the builder function to assign the value. So, for example, the :user
+     * parameter can be mapped to a function that creates a user object.
+     */
+    fun param(name: String, builder: (Request, Response, Any) -> Any?) {
+        params.put(name, builder)
+    }
 
-  /**
-   * Install a handler for a path for all HTTP methods.
-   */
-  fun all(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
+    fun install(method: String, path: String, handler: RouteHandler.() -> Boolean) {
+        routes.add(Route(method, path, handler))
+    }
 
-  /**
-   * Install a GET handler callback for a path
-   */
-  fun get(path: String, middleware: RouteHandler.() -> Boolean) = install("get", path, middleware)
+    /**
+     * Install a middleware Handler object to be used for all requests.
+     */
+    fun use(middleware: RouteHandler.() -> Boolean) = install("*", "*", middleware)
 
-  /**
-   * Install a POST handler callback for a path
-   */
-  fun post(path: String, middleware: RouteHandler.() -> Boolean) = install("post", path, middleware)
+    /**
+     * Install middleware for a given path expression
+     */
+    fun use(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
 
-  /**
-   * Install a PATCH handler callback for a path
-   */
-  fun patch(path: String, middleware: RouteHandler.() -> Boolean) = install("patch", path, middleware)
+    /**
+     * Install a handler for a path for all HTTP methods.
+     */
+    fun all(path: String, middleware: RouteHandler.() -> Boolean) = install("*", path, middleware)
 
-  /**
-   * Install a PUT handler callback for a path
-   */
-  fun put(path: String, middleware: RouteHandler.() -> Boolean)  = install("put", path, middleware)
+    /**
+     * Install a GET handler callback for a path
+     */
+    fun get(path: String, middleware: RouteHandler.() -> Boolean) = install("get", path, middleware)
 
-  /**
-   * Install a DELETE handler callback for a path
-   */
-  fun delete(path: String, middleware: RouteHandler.() -> Boolean) = install("delete", path, middleware)
+    /**
+     * Install a POST handler callback for a path
+     */
+    fun post(path: String, middleware: RouteHandler.() -> Boolean) = install("post", path, middleware)
 
-  /**
-   * Install a HEAD handler callback for a path
-   */
-  fun head(path: String, middleware: RouteHandler.() -> Boolean) = install("head", path, middleware)
+    /**
+     * Install a PATCH handler callback for a path
+     */
+    fun patch(path: String, middleware: RouteHandler.() -> Boolean) = install("patch", path, middleware)
 
-  fun handleRequest(req: Request, res: Response) {
-      val rh = RouteHandler(req, res)
-      for (i in routes)
-          if (req.checkRoute(i, res) && i.handler.invoke(rh))
-              return
-      res.sendErrorResponse(404)
-  }
+    /**
+     * Install a PUT handler callback for a path
+     */
+    fun put(path: String, middleware: RouteHandler.() -> Boolean) = install("put", path, middleware)
+
+    /**
+     * Install a DELETE handler callback for a path
+     */
+    fun delete(path: String, middleware: RouteHandler.() -> Boolean) = install("delete", path, middleware)
+
+    /**
+     * Install a HEAD handler callback for a path
+     */
+    fun head(path: String, middleware: RouteHandler.() -> Boolean) = install("head", path, middleware)
+
+    fun handleRequest(req: Request, res: Response) {
+        val rh = RouteHandler(req, res)
+        if (routes.firstOrNull { req.checkRoute(it, res) && it.handler.invoke(rh) } != null)
+            return
+        res.sendErrorResponse(404)
+    }
 
 //
 //  //***************************************************************************
@@ -264,9 +243,5 @@ abstract class Express {
 /**
  * Exception thrown by Express
  */
-open class ExpressException(val code: Int, msg: String? = null, cause: Throwable? = null): Exception(msg, cause)
+open class ExpressException(val code: Int, msg: String? = null, cause: Throwable? = null) : Exception(msg, cause)
 
-/**
- * Exception to throw whenever the request is invalid
- */
-open class BadRequest(msg: String? = null, cause: Throwable? = null): ExpressException(400, msg, cause)

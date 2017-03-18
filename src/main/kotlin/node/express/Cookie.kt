@@ -4,7 +4,7 @@ import java.util.Date
 import java.util.ArrayList
 import node.util.encodeUriComponent
 import node.util.decodeUriComponent
-import node.http.asHttpFormatString
+import node.util.asHttpFormatString
 
 /**
  * Encapsulates the data of a cookie.

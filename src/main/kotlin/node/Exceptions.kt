@@ -13,11 +13,6 @@ package node
 class NotFoundException(msg: String? = null, cause: Throwable? = null): Exception(msg, cause)
 
 /**
- * Exception to throw when an illegal duplicate is encountered.
- */
-class DuplicateException(msg: String? = null, key: String? = null, cause: Throwable? = null): Exception(msg, cause)
-
-/**
  * Exception thrown when there is a problem with a format
  */
 class FormatException(msg: String? = null, cause: Throwable? = null): Exception(msg, cause)
